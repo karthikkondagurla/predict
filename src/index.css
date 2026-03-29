@@ -437,3 +437,13 @@ img { max-width: 100%; display: block; }
   .btn { padding: 0.65rem 1.2rem; font-size: 0.875rem; }
   .modal-box { padding: 1.5rem; border-radius: var(--radius-lg); }
 }
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

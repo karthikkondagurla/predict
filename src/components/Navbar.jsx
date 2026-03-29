@@ -14,7 +14,7 @@ export default function Navbar() {
     setMenuOpen(false)
   }
 
-  const avatarUrl = user?.user_metadata?.avatar_url
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
 
   // Only show the navbar if the user is authenticated to maintain a clean login page

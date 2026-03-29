@@ -1,6 +1,8 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 
 export default function MatchCard({ match }) {
+  const navigate = useNavigate()
   // Extract data with fallbacks
   const name = match.name || "Unknown Match"
   const date = match.dateTimeGMT ? new Date(match.dateTimeGMT + "Z").toLocaleString() : "TBD"
@@ -32,7 +34,9 @@ export default function MatchCard({ match }) {
   }
 
   return (
-    <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', cursor: 'pointer' }}
+      onClick={() => navigate(`/challenge/create/${match.id}`, { state: { match } })}
+    >
       
       {/* Header: Date, Format, Badge */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -76,9 +80,14 @@ export default function MatchCard({ match }) {
         </div>
       </div>
 
-      {/* Match Status/Result */}
-      <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)', fontSize: '0.85rem', color: match.matchEnded ? 'var(--gold-light)' : 'var(--text-secondary)', fontWeight: 500, lineHeight: 1.4 }}>
-        {status}
+      {/* Match Status + CTA */}
+      <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.85rem', color: match.matchEnded ? 'var(--gold-light)' : 'var(--text-secondary)', fontWeight: 500 }}>
+          {status}
+        </span>
+        <span className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>
+          ⚡ Challenge
+        </span>
       </div>
 
     </div>

@@ -6,6 +6,8 @@ import Home from './pages/Home'
 import Messages from './pages/Messages'
 import Profile from './pages/Profile'
 import Login from './pages/Login'
+import CreateChallenge from './pages/CreateChallenge'
+import PlayChallenge from './pages/PlayChallenge'
 
 function NotFound() {
   return (
@@ -32,6 +34,8 @@ export default function App() {
             <Route path="/home" element={<Home />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/challenge/create/:matchId" element={<CreateChallenge />} />
+            <Route path="/challenge/:id" element={<PlayChallenge />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
