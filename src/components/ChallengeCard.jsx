@@ -222,23 +222,6 @@ export default function ChallengeCard({ challenge }) {
         {challenge.match_name}
       </h3>
 
-      {challenge.is_resolved && isLocked && (
-        <div style={{
-          background: 'rgba(76, 175, 80, 0.1)', border: '1px solid rgba(76, 175, 80, 0.3)',
-          padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-        }}>
-          <span style={{ fontSize: '0.9rem', color: '#81c784', fontWeight: 600 }}>
-            {isCreator ? 'Challenge Resolved' : 'Your Result'}
-          </span>
-          <span style={{ fontSize: '1.1rem', color: '#81c784', fontWeight: 700 }}>
-            {isCreator 
-              ? `${questionCount} Qs`
-              : `${answers.reduce((acc, ans, i) => acc + (ans === questions[i].answer ? 1 : 0), 0)} / ${questionCount}`}
-          </span>
-        </div>
-      )}
-
       {/* Progress Bar */}
       <div style={{ width: '100%', height: 4, background: 'var(--border-glass)', borderRadius: 2, marginBottom: '1.5rem', overflow: 'hidden' }}>
         <div style={{
@@ -262,26 +245,6 @@ export default function ChallengeCard({ challenge }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {q.options.map((opt, oi) => {
             const isSelected = answers[currentStep] === oi
-            const isCorrect = challenge.is_resolved && q.answer === oi
-            const isWrong = challenge.is_resolved && isSelected && q.answer !== oi
-
-            let bg = isSelected ? 'rgba(255, 107, 53, 0.1)' : 'var(--bg-glass)'
-            let border = isSelected ? 'var(--gold)' : 'var(--border-glass)'
-            let circleBorder = isSelected ? 'var(--gold)' : 'var(--text-muted)'
-            let circleBg = isSelected ? 'var(--gold)' : 'transparent'
-            
-            if (isCorrect) {
-              bg = 'rgba(76, 175, 80, 0.15)'
-              border = '#4caf50'
-              circleBorder = '#4caf50'
-              circleBg = '#4caf50'
-            } else if (isWrong) {
-              bg = 'rgba(244, 67, 54, 0.15)'
-              border = '#f44336'
-              circleBorder = '#f44336'
-              circleBg = '#f44336'
-            }
-
             return (
               <button
                 key={oi}
@@ -290,22 +253,22 @@ export default function ChallengeCard({ challenge }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.75rem',
                   padding: '0.75rem',
-                  background: bg,
-                  border: `1px solid ${border}`,
+                  background: isSelected ? 'rgba(255, 107, 53, 0.1)' : 'var(--bg-glass)',
+                  border: `1px solid ${isSelected ? 'var(--gold)' : 'var(--border-glass)'}`,
                   borderRadius: 'var(--radius-sm)',
                   cursor: isLocked ? 'default' : 'pointer',
                   color: 'var(--text-primary)', textAlign: 'left',
                   transition: 'all 0.2s ease',
-                  opacity: isLocked && !isSelected && !isCorrect ? 0.5 : 1,
+                  opacity: isLocked && !isSelected ? 0.5 : 1,
                 }}
               >
                 <div style={{
                   width: 20, height: 20, borderRadius: '50%',
-                  border: `1.5px solid ${circleBorder}`,
-                  background: circleBg,
+                  border: `1.5px solid ${isSelected ? 'var(--gold)' : 'var(--text-muted)'}`,
+                  background: isSelected ? 'var(--gold)' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {(isSelected || isCorrect || isWrong) && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#000' }} />}
+                  {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#000' }} />}
                 </div>
                 <span style={{ fontSize: '0.9rem' }}>{opt}</span>
               </button>
