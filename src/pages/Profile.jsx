@@ -99,21 +99,21 @@ export default function Profile() {
         .select('*')
         .eq('creator_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(50);
 
-        // Fetch AI Umpire posts for participated challenges
-        const participatedChallengeIds = formattedParticipated.map(p => p.data.id)
-        let participatedPostsData = []
-        
-        if (participatedChallengeIds.length > 0) {
-          const { data: pPostsData } = await supabase
-            .from('feed_posts')
-            .select('*')
-            .in('challenge_id', participatedChallengeIds)
-            .order('created_at', { ascending: false })
-            .limit(50)
-          participatedPostsData = pPostsData || []
-        }
+      // Fetch AI Umpire posts for participated challenges
+      const participatedChallengeIds = formattedParticipated.map(p => p.data.id)
+      let participatedPostsData = []
+      
+      if (participatedChallengeIds.length > 0) {
+        const { data: pPostsData } = await supabase
+          .from('feed_posts')
+          .select('*')
+          .in('challenge_id', participatedChallengeIds)
+          .order('created_at', { ascending: false })
+          .limit(50)
+        participatedPostsData = pPostsData || []
+      }
 
       const allPosts = [...(myPostsData || []), ...participatedPostsData]
       
