@@ -71,7 +71,7 @@ export default function Profile() {
       setPendingRequests(p || [])
       setSentRequests(s || [])
 
-      // Load Activity Data
+      // Load Activity Data (Created)
       const { data: challengesData } = await supabase
         .from('challenges')
         .select('*')
@@ -81,6 +81,19 @@ export default function Profile() {
 
       const formattedChallenges = (challengesData || []).map(c => ({ type: 'challenge', data: c, date: new Date(c.created_at) }))
 
+      // Load Activity Data (Participated)
+      const { data: participatedData } = await supabase
+        .from('challenge_responses')
+        .select('created_at, challenges(*)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      const formattedParticipated = (participatedData || [])
+        .filter(p => p.challenges && p.challenges.creator_id !== user.id) // deduplicate
+        .map(p => ({ type: 'challenge', data: p.challenges, date: new Date(p.created_at) }))
+
+      // Load Posts
       const { data: postsData } = await supabase
         .from('feed_posts')
         .select('*')
@@ -90,7 +103,7 @@ export default function Profile() {
         
       const formattedPosts = (postsData || []).map(p => ({ type: 'post', data: p, date: new Date(p.created_at) }))
 
-      const combined = [...formattedChallenges, ...formattedPosts].sort((a, b) => b.date - a.date)
+      const combined = [...formattedChallenges, ...formattedParticipated, ...formattedPosts].sort((a, b) => b.date - a.date)
       setActivity(combined)
     } catch (err) {
       setError(err.message)
