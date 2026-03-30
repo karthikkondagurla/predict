@@ -80,13 +80,10 @@ export default function MatchCard({ match }) {
         </div>
       </div>
 
-      {/* Match Status + CTA */}
-      <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Match Status */}
+      <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <span style={{ fontSize: '0.85rem', color: match.matchEnded ? 'var(--gold-light)' : 'var(--text-secondary)', fontWeight: 500 }}>
           {status}
-        </span>
-        <span className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>
-          ⚡ Challenge
         </span>
       </div>
 

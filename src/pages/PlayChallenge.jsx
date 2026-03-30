@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { getChallenge, submitChallengeResponse, getChallengeResponses } from '../utils/challenges'
+import { supabase } from '../supabase'
 import ShareModal from '../components/ShareModal'
+import FeedPost from '../components/FeedPost'
 
 export default function PlayChallenge() {
   const { id } = useParams()
@@ -25,6 +27,7 @@ export default function PlayChallenge() {
 
   // Responses
   const [responses, setResponses] = useState([])
+  const [feedPosts, setFeedPosts] = useState([])
 
   useEffect(() => {
     async function load() {
@@ -48,6 +51,16 @@ export default function PlayChallenge() {
             setScore(myResponse.score)
             setSubmitted(true)
           }
+        }
+        
+        if (c.is_resolved) {
+          const { data: posts } = await supabase
+            .from('feed_posts')
+            .select('*')
+            .eq('challenge_id', id)
+            .order('created_at', { ascending: true }) // chronological order
+          const formattedPosts = (posts || []).map(p => ({ type: 'post', data: p }))
+          setFeedPosts(formattedPosts)
         }
       } catch (err) {
         setError(err.message)
@@ -151,112 +164,113 @@ export default function PlayChallenge() {
         )}
 
         {/* Status / Score Result */}
-        {submitted && !isCreator && (
-          challenge.is_resolved ? (
-            <div className="glass-card" style={{
-              padding: '2rem', textAlign: 'center', marginBottom: '1.5rem',
-              border: '1px solid rgba(76,175,80,0.3)', background: 'rgba(76,175,80,0.05)',
-            }}>
-              <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>
-                {score === (challenge.questions.length * 10) ? '🏆' : score > 0 ? '🎯' : '😅'}
+        {challenge.is_resolved ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+            <h3 style={{ color: 'var(--gold)', textAlign: 'center', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.9rem' }}>
+               Official Match Results
+            </h3>
+            {feedPosts.length > 0 ? (
+              feedPosts.map(item => <FeedPost key={`post-${item.data.id}`} post={item.data} />)
+            ) : (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <span className="spinner" style={{ width: 32, height: 32 }} />
+                <p style={{ marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Loading AI Umpire grading...</p>
               </div>
-              <h2 style={{ color: 'var(--text-primary)' }}>
-                {score / 10}/{challenge.questions.length} Correct
-              </h2>
-              <p style={{ color: 'var(--text-secondary)' }}>
-                {score === (challenge.questions.length * 10) ? 'Perfect score! You nailed it!' :
-                 score > 0 ? 'Great job!' : 'Better luck next time!'}
-              </p>
-              <button className="btn btn-secondary" onClick={() => setShowShare(true)} style={{ marginTop: '1rem' }}>
-                Challenge Your Friends Too
-              </button>
-            </div>
-          ) : (
-             <div className="glass-card" style={{
-               padding: '2rem', textAlign: 'center', marginBottom: '1.5rem',
-               border: '1px solid rgba(255, 152, 0, 0.3)', background: 'rgba(255, 152, 0, 0.05)',
-             }}>
-               <div style={{ fontSize: '3rem', marginBottom: '0.8rem' }}>⏳</div>
-               <h3 style={{ color: 'var(--gold)', marginBottom: '0.5rem' }}>Prediction Locked In!</h3>
-               <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                 Your answers have been submitted. When the match ends, the AI Umpire will grade everyone and publish a result post in the social feed!
-               </p>
-             </div>
-          )
-        )}
-
-        {error && (
-          <div style={{
-            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '1.5rem',
-            color: '#fc8181', fontSize: '0.85rem',
-          }}>
-            {error}
+            )}
+            
+            <button className="btn btn-secondary" onClick={() => setShowShare(true)} style={{ marginTop: '1rem', width: '100%', justifyContent: 'center' }}>
+               Challenge Your Friends Too
+            </button>
           </div>
-        )}
+        ) : (
+          <>
+            {submitted && !isCreator && (
+               <div className="glass-card" style={{
+                 padding: '2rem', textAlign: 'center', marginBottom: '1.5rem',
+                 border: '1px solid rgba(255, 152, 0, 0.3)', background: 'rgba(255, 152, 0, 0.05)',
+               }}>
+                 <div style={{ fontSize: '3rem', marginBottom: '0.8rem' }}>⏳</div>
+                 <h3 style={{ color: 'var(--gold)', marginBottom: '0.5rem' }}>Prediction Locked In!</h3>
+                 <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                   Your answers have been submitted. When the match ends, the AI Umpire will grade everyone and publish a result post in the social feed!
+                 </p>
+               </div>
+            )}
 
-        {/* Questions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {challenge.questions.map((q, qi) => (
-            <div key={qi} className="glass-card" style={{ padding: '1.5rem' }}>
-              <p style={{ fontWeight: 700, color: 'var(--gold)', fontSize: '0.75rem', marginBottom: '0.5rem' }}>QUESTION {qi + 1}</p>
-              <h3 style={{ fontSize: '1.05rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>{q.question}</h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {q.options.map((opt, oi) => {
-                  const isSelected = answers[qi] === oi
-                  const isCorrect = q.answer === oi
-                  const showResult = submitted || isCreator
-
-                  let borderColor = 'var(--border-glass)'
-                  let bgColor = 'transparent'
-                  if (showResult && isCorrect) {
-                    borderColor = 'rgba(76,175,80,0.6)'
-                    bgColor = 'rgba(76,175,80,0.08)'
-                  } else if (showResult && isSelected && !isCorrect) {
-                    borderColor = 'rgba(244,67,54,0.6)'
-                    bgColor = 'rgba(244,67,54,0.08)'
-                  } else if (isSelected) {
-                    borderColor = 'var(--gold)'
-                    bgColor = 'rgba(255,87,34,0.08)'
-                  }
-
-                  return (
-                    <button
-                      key={oi}
-                      onClick={() => handleSelectAnswer(qi, oi)}
-                      disabled={submitted || isCreator}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.75rem',
-                        padding: '0.75rem 1rem',
-                        background: bgColor,
-                        border: `1.5px solid ${borderColor}`,
-                        borderRadius: 'var(--radius-sm)',
-                        cursor: (submitted || isCreator) ? 'default' : 'pointer',
-                        transition: 'all var(--transition-fast)',
-                        textAlign: 'left', width: '100%',
-                        color: 'var(--text-primary)',
-                      }}
-                    >
-                      <span style={{
-                        width: 24, height: 24, minWidth: 24,
-                        borderRadius: '50%',
-                        border: `2px solid ${isSelected ? 'var(--gold)' : 'var(--border-glass)'}`,
-                        background: isSelected ? 'var(--gold)' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.65rem', fontWeight: 700,
-                        color: isSelected ? '#000' : 'var(--text-muted)',
-                      }}>
-                        {showResult && isCorrect ? '✓' : String.fromCharCode(65 + oi)}
-                      </span>
-                      <span style={{ fontSize: '0.95rem' }}>{opt}</span>
-                    </button>
-                  )
-                })}
+            {error && (
+              <div style={{
+                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '1.5rem',
+                color: '#fc8181', fontSize: '0.85rem',
+              }}>
+                {error}
               </div>
+            )}
+
+            {/* Questions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {challenge.questions.map((q, qi) => (
+                <div key={qi} className="glass-card" style={{ padding: '1.5rem' }}>
+                  <p style={{ fontWeight: 700, color: 'var(--gold)', fontSize: '0.75rem', marginBottom: '0.5rem' }}>QUESTION {qi + 1}</p>
+                  <h3 style={{ fontSize: '1.05rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>{q.question}</h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {q.options.map((opt, oi) => {
+                      const isSelected = answers[qi] === oi
+                      const isCorrect = q.answer === oi
+                      const showResult = submitted || isCreator
+
+                      let borderColor = 'var(--border-glass)'
+                      let bgColor = 'transparent'
+                      if (showResult && isCorrect) {
+                        borderColor = 'rgba(76,175,80,0.6)'
+                        bgColor = 'rgba(76,175,80,0.08)'
+                      } else if (showResult && isSelected && !isCorrect) {
+                        borderColor = 'rgba(244,67,54,0.6)'
+                        bgColor = 'rgba(244,67,54,0.08)'
+                      } else if (isSelected) {
+                        borderColor = 'var(--gold)'
+                        bgColor = 'rgba(255,87,34,0.08)'
+                      }
+
+                      return (
+                        <button
+                          key={oi}
+                          onClick={() => handleSelectAnswer(qi, oi)}
+                          disabled={submitted || isCreator}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '0.75rem',
+                            padding: '0.75rem 1rem',
+                            background: bgColor,
+                            border: `1.5px solid ${borderColor}`,
+                            borderRadius: 'var(--radius-sm)',
+                            cursor: (submitted || isCreator) ? 'default' : 'pointer',
+                            transition: 'all var(--transition-fast)',
+                            textAlign: 'left', width: '100%',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          <span style={{
+                            width: 24, height: 24, minWidth: 24,
+                            borderRadius: '50%',
+                            border: `2px solid ${isSelected ? 'var(--gold)' : 'var(--border-glass)'}`,
+                            background: isSelected ? 'var(--gold)' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.65rem', fontWeight: 700,
+                            color: isSelected ? '#000' : 'var(--text-muted)',
+                          }}>
+                            {showResult && isCorrect ? '✓' : String.fromCharCode(65 + oi)}
+                          </span>
+                          <span style={{ fontSize: '0.95rem' }}>{opt}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
 
         {/* Submit Button (for non-creators who haven't submitted) */}
         {!isCreator && !submitted && (

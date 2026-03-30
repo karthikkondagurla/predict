@@ -1,11 +1,25 @@
 import { supabase } from '../supabase'
 
 /**
+ * Generate a 3-character alphanumeric short ID (A-Z, 0-9)
+ */
+function generateShortId() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let result = ''
+  for (let i = 0; i < 3; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+/**
  * Create a new challenge
  */
 export async function createChallenge({ matchId, matchName, matchDate, questions }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('You must be logged in to create a challenge')
+
+  const shortId = generateShortId()
 
   const { data, error } = await supabase
     .from('challenges')
@@ -15,6 +29,7 @@ export async function createChallenge({ matchId, matchName, matchDate, questions
       match_name: matchName,
       match_date: matchDate,
       questions: questions, // [{question, options[], answer}]
+      short_id: shortId,
     })
     .select()
     .single()
@@ -42,23 +57,14 @@ export async function getChallenge(challengeId) {
  * @param {string[]} friendIds - if provided, only return challenges from these users + self
  */
 export async function getRecentChallenges(friendIds = null, limit = 20) {
-  // Get start of today
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
   let query = supabase
     .from('challenges')
     .select('*')
-    .gte('match_date', today.toISOString())
-    .order('match_date', { ascending: true })
     .order('created_at', { ascending: false })
     .limit(limit)
 
   if (friendIds !== null && friendIds.length > 0) {
     query = query.in('creator_id', friendIds)
-  } else if (friendIds !== null && friendIds.length === 0) {
-    // No friends yet — return empty
-    return []
   }
 
   const { data, error } = await query
@@ -89,15 +95,32 @@ export async function submitChallengeResponse({ challengeId, answers, score }) {
 }
 
 /**
- * Get responses for a challenge
+ * Get responses for a challenge, with profile info (name, avatar)
  */
 export async function getChallengeResponses(challengeId) {
   const { data, error } = await supabase
     .from('challenge_responses')
     .select('*')
     .eq('challenge_id', challengeId)
-    .order('score', { ascending: false })
+    .order('created_at', { ascending: true })
 
   if (error) throw error
-  return data || []
+  const responses = data || []
+
+  if (responses.length === 0) return responses
+
+  // Fetch profiles separately (challenge_responses.user_id -> auth.users, not profiles directly)
+  const userIds = [...new Set(responses.map(r => r.user_id))]
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url, email')
+    .in('id', userIds)
+
+  const profileMap = {}
+  ;(profiles || []).forEach(p => { profileMap[p.id] = p })
+
+  return responses.map(r => ({
+    ...r,
+    profiles: profileMap[r.user_id] || null
+  }))
 }

@@ -67,9 +67,9 @@ export default function Profile() {
     try {
       // Load Friends data
       const [f, p, s] = await Promise.all([getFriends(), getPendingRequests(), getSentRequests()])
-      setFriends(f)
-      setPendingRequests(p)
-      setSentRequests(s)
+      setFriends(f || [])
+      setPendingRequests(p || [])
+      setSentRequests(s || [])
 
       // Load Activity Data
       const { data: challengesData } = await supabase
@@ -98,9 +98,11 @@ export default function Profile() {
     } finally {
       setLoading(false)
     }
-  }, [user.id])
+  }, [user?.id])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { 
+    if (user?.id) loadData() 
+  }, [loadData, user?.id])
 
   // Friend Actions
   const handleSearch = async (q) => {
@@ -147,7 +149,7 @@ export default function Profile() {
 
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
-  const totalNotifications = pendingRequests.length
+  const totalNotifications = (pendingRequests || []).length
 
   const mainTabStyle = (name) => ({
     flex: 1, padding: '0.85rem', textAlign: 'center', fontWeight: 700, fontSize: '0.85rem',
@@ -169,17 +171,17 @@ export default function Profile() {
       <div style={{ padding: '2.5rem 1rem 1.5rem', background: 'var(--bg-glass)', borderBottom: '1px solid var(--border-glass)' }}>
         <div className="container" style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div style={{ position: 'relative', marginBottom: '1rem' }}>
-            <Avatar user={{ ...user.user_metadata, email: user.email }} size={96} />
+            <Avatar user={{ ...(user?.user_metadata || {}), email: user?.email }} size={96} />
           </div>
           <h2 style={{ color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '1.5rem', fontWeight: 700 }}>{displayName}</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>{user.email}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>{user?.email}</p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '3rem', margin: '1.5rem 0' }}>
             <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>{activity.length}</p>
+              <p style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>{(activity || []).length}</p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Posts</p>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>{friends.length}</p>
+              <p style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>{(friends || []).length}</p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Friends</p>
             </div>
           </div>
@@ -192,9 +194,9 @@ export default function Profile() {
       <div className="container" style={{ maxWidth: '800px', padding: 0 }}>
         {/* Main Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)', background: 'var(--bg-secondary)', position: 'sticky', top: 64, zIndex: 10 }}>
-          <button style={mainTabStyle('activity')} onClick={() => setMainTab('activity')}>📷 Activity</button>
+          <button style={mainTabStyle('activity')} onClick={() => setMainTab('activity')}>Activity</button>
           <button style={mainTabStyle('friends')} onClick={() => setMainTab('friends')}>
-            🤝 Friends {totalNotifications > 0 && <span style={{color: '#f44336'}}>({totalNotifications})</span>}
+            Friends {totalNotifications > 0 && <span style={{color: '#f44336'}}>({totalNotifications})</span>}
           </button>
         </div>
 
@@ -207,7 +209,7 @@ export default function Profile() {
           ) : mainTab === 'activity' ? (
             activity.length === 0 ? (
               <div className="empty-state" style={{ padding: '3rem 1rem', background: 'transparent', border: 'none' }}>
-                <div className="empty-icon">📷</div>
+                <div className="empty-icon" style={{ fontSize: '2rem' }}>—</div>
                 <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No Activity Yet</h3>
                 <p style={{ fontSize: '0.9rem' }}>Create challenges to build your profile.</p>
                 <a href="/home" className="btn btn-primary" style={{ marginTop: '1rem' }}>Create Challenge</a>
@@ -224,11 +226,11 @@ export default function Profile() {
              <div>
                 {/* Friends Sub-Tabs */}
                 <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.25rem', overflowX: 'auto' }}>
-                  <button style={subTabStyle('list')} onClick={() => setFriendsTab('list')}>🤝 My Friends</button>
+                  <button style={subTabStyle('list')} onClick={() => setFriendsTab('list')}>My Friends</button>
                   <button style={subTabStyle('requests')} onClick={() => setFriendsTab('requests')}>
-                    🔔 Requests {totalNotifications > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: '#f44336', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{totalNotifications}</span>}
+                    Requests {totalNotifications > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: '#f44336', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{totalNotifications}</span>}
                   </button>
-                  <button style={subTabStyle('search')} onClick={() => setFriendsTab('search')}>🔍 Find People</button>
+                  <button style={subTabStyle('search')} onClick={() => setFriendsTab('search')}>Find People</button>
                 </div>
 
                 {/* Sub Tab Content */}
@@ -236,7 +238,7 @@ export default function Profile() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {friends.length === 0 ? (
                       <div className="empty-state" style={{ padding: '2rem 1rem', border: 'none', background: 'transparent' }}>
-                        <div className="empty-icon">🤝</div>
+                        <div className="empty-icon" style={{ fontSize: '2rem' }}>—</div>
                         <h3 style={{ color: 'var(--text-primary)' }}>No friends yet</h3>
                         <p style={{ fontSize: '0.9rem' }}>Search for people to add as friends!</p>
                         <button className="btn btn-primary" onClick={() => setFriendsTab('search')} style={{ marginTop: '1rem' }}>Find People</button>

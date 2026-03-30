@@ -438,6 +438,11 @@ img { max-width: 100%; display: block; }
   .modal-box { padding: 1.5rem; border-radius: var(--radius-lg); }
 }
 
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 @keyframes slide-up {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }

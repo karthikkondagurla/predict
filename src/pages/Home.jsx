@@ -51,7 +51,8 @@ export default function Home() {
       const formattedPosts = (posts || []).map(p => ({ type: 'post', data: p, date: new Date(p.created_at) }))
 
       // 4. Combine and sort
-      const combined = [...formattedChallenges, ...formattedPosts].sort((a, b) => b.date - a.date)
+      let combined = [...formattedChallenges, ...formattedPosts].sort((a, b) => b.date - a.date)
+      
       setFeedItems(combined)
 
     } catch (err) {
@@ -61,8 +62,13 @@ export default function Home() {
 
   useEffect(() => {
     loadMatches()
-    loadFeedData()
   }, [])
+
+  useEffect(() => {
+    if (user) {
+      loadFeedData()
+    }
+  }, [user])
 
   const hasFriends = friendIds !== null && friendIds.length > 0
 
@@ -119,7 +125,7 @@ export default function Home() {
         {/* Home Feed */}
         <div style={{ marginTop: '1rem' }}>
           <h2 style={{ color: 'var(--text-primary)', marginBottom: '1rem', fontSize: '1.4rem' }}>
-            🔥 {hasFriends ? "Friends' Activity" : "Your Activity"}
+            Feed
           </h2>
 
           {feedItems.length === 0 ? (
@@ -131,7 +137,7 @@ export default function Home() {
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                     Your feed is private to your friends only.
                   </p>
-                  <a href="/messages" className="btn btn-primary">Find Friends</a>
+                  <a href="/profile" className="btn btn-primary">Find Friends</a>
                 </>
               ) : (
                 <>
