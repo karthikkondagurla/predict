@@ -21,9 +21,10 @@ export default function Home() {
     setError(null)
     try {
       const data = await fetchCurrentMatches()
-      setMatches(data || [])
+      setMatches(Array.isArray(data) ? data : [])
     } catch (err) {
       setError(err.message)
+      setMatches([])
     } finally {
       setLoading(false)
     }
