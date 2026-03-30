@@ -9,7 +9,7 @@ import ChallengeCard from '../components/ChallengeCard'
 import FeedPost from '../components/FeedPost'
 
 export default function Home() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [matches, setMatches] = useState([])
   const [feedItems, setFeedItems] = useState([]) // mixed challenges and posts
   const [friendIds, setFriendIds] = useState(null)
@@ -31,6 +31,7 @@ export default function Home() {
   }
 
   const loadFeedData = async () => {
+    if (!user?.id) return
     try {
       // 1. Get friend IDs (+ own ID)
       const ids = await getFriendIds()
@@ -72,6 +73,16 @@ export default function Home() {
   }, [user])
 
   const hasFriends = friendIds !== null && friendIds.length > 0
+
+  if (authLoading || !user) {
+    return (
+      <div className="page">
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+          <span className="spinner" style={{ width: 40, height: 40 }}></span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="page">

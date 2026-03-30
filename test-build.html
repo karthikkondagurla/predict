@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module">
+    // Simple test to see if React mounts
+    import React from 'react';
+    import ReactDOM from 'react-dom/client';
+    
+    function App() {
+      return React.createElement('div', null, 'React is working!');
+    }
+    
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      React.createElement(App)
+    );
+  </script>
+</body>
+</html>
