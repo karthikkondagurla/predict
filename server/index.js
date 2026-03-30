@@ -291,7 +291,6 @@ Return ONLY a valid JSON array, one object per question, in this exact format:
               q: q.question,
               off: officialAnsText,
               total_q: challenge.questions.length,
-              short_id: challenge.short_id,
               parts: participants
            };
 
@@ -329,8 +328,8 @@ Return ONLY a valid JSON array, one object per question, in this exact format:
           const leaderboardData = {
              type: 'leaderboard',
              match_name: challenge.match_name,
-             total_q: challenge.questions.length,
              short_id: challenge.short_id,
+             total_q: challenge.questions.length,
              parts: leaderboardParticipants
           };
 

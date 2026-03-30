@@ -93,33 +93,27 @@ export default function Profile() {
         .filter(p => p.challenges && p.challenges.creator_id !== user.id) // deduplicate
         .map(p => ({ type: 'challenge', data: p.challenges, date: new Date(p.created_at) }))
 
-      // Load Posts
-      const { data: myPostsData } = await supabase
-        .from('feed_posts')
-        .select('*')
-        .eq('creator_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      let participatedPostsData = []
+      // Collect all challenge IDs the user is involved in (created + participated)
+      const createdChallengeIds = (challengesData || []).map(c => c.id)
       const participatedChallengeIds = formattedParticipated.map(p => p.data.id)
-      
-      if (participatedChallengeIds.length > 0) {
-        // Fetch AI Umpire posts for participated challenges
+      const allChallengeIds = [...new Set([...createdChallengeIds, ...participatedChallengeIds])]
+
+      // Fetch all AI Umpire posts for any challenge the user is involved in
+      let allPostsData = []
+      if (allChallengeIds.length > 0) {
         const { data: pPostsData } = await supabase
           .from('feed_posts')
           .select('*')
-          .in('challenge_id', participatedChallengeIds)
+          .in('challenge_id', allChallengeIds)
           .order('created_at', { ascending: false })
-          .limit(50)
-        participatedPostsData = pPostsData || []
+          .limit(100)
+        allPostsData = pPostsData || []
       }
 
-      const allPosts = [...(myPostsData || []), ...participatedPostsData]
-      
       // Deduplicate posts
+
       const uniquePostsMap = {}
-      allPosts.forEach(p => uniquePostsMap[p.id] = p)
+      allPostsData.forEach(p => uniquePostsMap[p.id] = p)
       const uniquePosts = Object.values(uniquePostsMap)
 
       const formattedPosts = uniquePosts.map(p => ({ type: 'post', data: p, date: new Date(p.created_at) }))
