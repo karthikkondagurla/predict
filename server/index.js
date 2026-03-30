@@ -170,14 +170,17 @@ ${JSON.stringify(scoreData.data)}
 CHALLENGE QUESTIONS:
 ${challenge.questions.map((q, i) => `Q${i}: ${q.question} (Options: ${q.options.map((o, j) => `${j}:${o}`).join(', ')})`).join('\n')}
 
-For each question, do the following:
-1. Determine which option index (0-based) is the correct answer based ONLY on the scorecard. If the match is still ongoing or data is unavailable, use your best logical guess.
-2. Write a SHORT, punchy result_text (max 10 words) stating the actual fact from the scorecard. Example: "Rohit scored 65 runs off 43 balls" or "MI won by 6 wickets".
+1. Evaluate the question against the scorecard. For "Man of the Match", explicitly look for fields like "playerOfTheMatch" or "manOfTheMatch" in the JSON. Do NOT assume the top run scorer is the Man of the Match.
+2. If the match is in the future/ongoing, you MUST hallucinate a realistic outcome to allow our demo to function.
+3. BE SMART ABOUT NAME MATCHING. If the options contain a typo, a first name, or a phonetic equivalent (e.g., "suryavamshi" matches "Vaibhav Sooryavanshi", "jadega" matches "Ravindra Jadeja", "nandre burger" matches "Burger"), consider that option CORRECT.
+4. If the correct answer (accounting for loose name matching) IS among the options, set "answer_index" to that option's 0-based index.
+5. ONLY if the correct answer is TRULY NOT among the options in any form, set "answer_index" to null. 
+6. Provide a "result_text" (max 15 words) stating the actual result (e.g. "Burger won Man of the Match"). DO NOT append phrases like "(not in options)".
 
 Return ONLY a valid JSON array, one object per question, in this exact format:
 [
   { "answer_index": 0, "result_text": "Rohit scored 65 runs" },
-  { "answer_index": 2, "result_text": "KKR lost by 8 wickets" }
+  { "answer_index": null, "result_text": "Burger won Man of the Match" }
 ]
         `;
 
@@ -185,16 +188,69 @@ Return ONLY a valid JSON array, one object per question, in this exact format:
         const geminiResults = JSON.parse(result.response.text());
         const correctAnswers = geminiResults.map(r => r.answer_index);
 
+        // Skip grading if any question explicitly returns -1 (meaning data unavailable and refused to hallucinate)
+        // Note: null means the question is resolved but the real answer wasn't in the options.
+        /* if (correctAnswers.includes(-1)) {
+          console.log(`⏳ Match ${challenge.match_name} lacks sufficient data for a verdict. Will try again later.`);
+          continue; 
+        } */
+
         // 4. Grade responses and fetch user profiles
-        const { data: responses } = await supabase
+        const { data: rawResponses } = await supabase
           .from('challenge_responses')
-          .select('*, profiles(full_name, email)')
+          .select('*')
           .eq('challenge_id', challenge.id);
+
+        let responses = rawResponses || [];
+
+        if (responses.length > 0) {
+          const userIds = [...new Set(responses.map(r => r.user_id))];
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, email')
+            .in('id', userIds);
+          
+          const profileMap = {};
+          (profiles || []).forEach(p => { profileMap[p.id] = p; });
+          
+          responses = responses.map(r => ({
+            ...r,
+            profiles: profileMap[r.user_id] || null
+          }));
+        }
+
+        // Fetch creator's profile manually
+        const { data: creatorProfile } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, email')
+          .eq('id', challenge.creator_id)
+          .single();
+
+        let creatorScore = 0;
+        const creatorAnswers = challenge.questions.map(q => q.answer);
+        creatorAnswers.forEach((ans, i) => {
+          if (ans === correctAnswers[i]) creatorScore += 20;
+        });
+
+        // Synthesize creator's response
+        const creatorResponse = {
+           id: 'creator-' + challenge.id,
+           user_id: challenge.creator_id,
+           answers: creatorAnswers,
+           score: creatorScore,
+           profiles: creatorProfile || null,
+           is_creator: true
+        };
+
+        // Add creator to the participants list!
+        responses.unshift(creatorResponse);
 
         let participantDetails = '';
 
         if (responses && responses.length > 0) {
           for (const resp of responses) {
+            if (resp.is_creator) continue; // Do not update DB for the synthesized creator response
+
             let score = 0;
             resp.answers.forEach((ans, i) => {
               if (ans === correctAnswers[i]) score += 20;
@@ -213,12 +269,13 @@ Return ONLY a valid JSON array, one object per question, in this exact format:
         // 6. Generate detailed feed post FOR EACH QUESTION
         for (let i = 0; i < challenge.questions.length; i++) {
            const q = challenge.questions[i];
-           const officialAnsText = geminiResults[i]?.result_text || q.options[correctAnswers[i]];
+           // If answer is null, use the result text, otherwise fallback to the option array text
+           const officialAnsText = geminiResults[i]?.result_text || (correctAnswers[i] !== null ? q.options[correctAnswers[i]] : "None of the options");
            
            const participants = responses ? responses.map(resp => {
              const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
              const img = resp.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
-             const isCorrect = resp.answers[i] === correctAnswers[i];
+             const isCorrect = correctAnswers[i] !== null && resp.answers[i] === correctAnswers[i];
              return {
                 id: resp.user_id,
                 n: name,
@@ -234,6 +291,7 @@ Return ONLY a valid JSON array, one object per question, in this exact format:
               q: q.question,
               off: officialAnsText,
               total_q: challenge.questions.length,
+              short_id: challenge.short_id,
               parts: participants
            };
 
@@ -272,6 +330,7 @@ Return ONLY a valid JSON array, one object per question, in this exact format:
              type: 'leaderboard',
              match_name: challenge.match_name,
              total_q: challenge.questions.length,
+             short_id: challenge.short_id,
              parts: leaderboardParticipants
           };
 

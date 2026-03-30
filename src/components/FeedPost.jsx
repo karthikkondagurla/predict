@@ -47,6 +47,14 @@ export default function FeedPost({ post }) {
         <div>
           <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             🏆 Challenge Leaderboard
+            {qData.short_id && (
+              <span style={{ 
+                fontSize: '0.65rem', fontWeight: 700, color: 'var(--gold)', 
+                background: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)', 
+                padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace',
+                marginLeft: 'auto'
+              }}>#{qData.short_id}</span>
+            )}
           </h3>
           <div style={{ marginBottom: '1.25rem' }}>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.2rem' }}>
