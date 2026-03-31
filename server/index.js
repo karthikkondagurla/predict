@@ -29,72 +29,71 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 redis.on('connect', () => {
   console.log('✅ Connected to Redis successfully');
 });
-
 redis.on('error', (err) => {
   console.error('❌ Redis connection error:', err);
 });
 
-// CricAPI Configuration
-const API_KEY = process.env.VITE_CRICAPI_KEY; // Using existing env var name
-const BASE_URL = 'https://api.cricapi.com/v1';
-const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f"; // Indian Premier League 2026
+// --- MOCK DATA FOR TESTING INCREMENTAL EVALUATION ---
+const mockMatchId = "mock-live-match-123";
 
+const mockLiveMatches = [
+  {
+    id: mockMatchId,
+    name: "Royal Challengers Bengaluru vs Chennai Super Kings",
+    matchType: "t20",
+    status: "Chennai Super Kings elected to bowl",
+    venue: "M. Chinnaswamy Stadium, Bengaluru",
+    date: new Date().toISOString().split('T')[0],
+    dateTimeGMT: new Date().toISOString().split('T')[0] + "T14:30:00.000Z",
+    teams: ["Royal Challengers Bengaluru", "Chennai Super Kings"],
+    teamInfo: [
+      { name: "Royal Challengers Bengaluru", shortname: "RCB", img: "https://g.cricapi.com/i/teams/64.jpg" },
+      { name: "Chennai Super Kings", shortname: "CSK", img: "https://g.cricapi.com/i/teams/58.jpg" }
+    ],
+    score: [
+      { r: 45, w: 1, o: 5.2, inning: "RCB Inning 1" }
+    ],
+    matchStarted: true,
+    matchEnded: false
+  }
+];
+
+const mockLiveScorecard = {
+  id: mockMatchId,
+  name: "Royal Challengers Bengaluru vs Chennai Super Kings",
+  matchType: "t20",
+  status: "CSK elected to bowl",
+  matchEnded: false,
+  score: [
+      { r: 45, w: 1, o: 5.2, inning: "RCB Inning 1" }
+  ],
+  scorecard: [
+    {
+      inning: "RCB Inning 1",
+      batting: [
+        { batsman: { name: "Virat Kohli" }, r: 35, b: 18, "4s": 5, "6s": 1, "dismissal-text": "lbw b Jadeja", "out": true },
+        { batsman: { name: "Faf du Plessis" }, r: 10, b: 14, "4s": 1, "6s": 0, "dismissal-text": "not out", "out": false }
+      ],
+      bowling: [
+        { bowler: { name: "Ravindra Jadeja" }, o: 2, m: 0, r: 12, w: 1, eco: 6.0 }
+      ]
+    }
+  ]
+};
+// ----------------------------------------------------
+
+// API Route forcibly returning the mock match instead of calling CricAPI
 app.get('/api/matches', async (req, res) => {
-  if (!API_KEY) {
-    return res.status(500).json({ status: 'error', reason: 'Missing CricAPI Key on server' });
-  }
-
-  const cacheKey = `cricapi_ipl_matches_today`;
-
-  try {
-    // 1. Check Redis Cache
-    const cachedData = await redis.get(cacheKey);
-    if (cachedData) {
-      console.log('📦 Cache Hit: Serving IPL matches from Redis');
-      return res.json(JSON.parse(cachedData));
-    }
-
-    console.log('🌐 Cache Miss: Fetching from CricAPI...');
-
-    // 2. Fetch from External API
-    const response = await fetch(`${BASE_URL}/series_info?apikey=${API_KEY}&id=${IPL_SERIES_ID}`);
-    const data = await response.json();
-
-    if (data.status !== "success") {
-      throw new Error(data.reason || "Failed to fetch matches from CricAPI");
-    }
-
-    const rawMatches = data.data?.matchList || [];
-    const todayStr = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD" in UTC
-
-    const filteredMatches = rawMatches.filter(match => {
-      // Check if the match is happening today
-      return match.dateTimeGMT && match.dateTimeGMT.startsWith(todayStr);
-    });
-
-    const responsePayload = {
-      status: 'success',
-      data: filteredMatches,
-      source: 'api'
-    };
-
-    // 3. Store in Redis
-    await redis.setex(cacheKey, CACHE_TTL_SECONDS, JSON.stringify({ ...responsePayload, source: 'cache' }));
-
-    // 4. Return Data
-    res.json(responsePayload);
-  } catch (error) {
-    console.error("API Route Error:", error);
-    res.status(500).json({ status: 'error', reason: error.message });
-  }
+  console.log('📦 Serving Mock Live Match to the frontend');
+  return res.json({ status: 'success', data: mockLiveMatches, source: 'mock' });
 });
 
 
 // ---------------------------------------------------------
-// 🤖 AI UMPIRE CRON JOB (Runs every 10 minutes)
+// 🤖 INCREMENTAL AI UMPIRE CRON JOB (Runs frequently)
 // ---------------------------------------------------------
 async function runAIUmpire() {
-  console.log('🤖 Running AI Umpire Cron Job...');
+  console.log('🤖 Running Incremental AI Umpire Cron Job...');
   if (!process.env.GEMINI_API_KEY) {
     console.log('⚠️ No GEMINI_API_KEY found in .env. Skipping AI Umpire.');
     return;
@@ -111,257 +110,205 @@ async function runAIUmpire() {
       return;
     }
 
-    // 2. Safely pull Series Info directly to Redis first, then validate
-    const seriesCacheKey = `umpire_series_info_${IPL_SERIES_ID}`;
-    let matchList = [];
-    const cachedSeries = await redis.get(seriesCacheKey);
-
-    if (cachedSeries) {
-      matchList = JSON.parse(cachedSeries);
-    } else {
-      const response = await fetch(`${BASE_URL}/series_info?apikey=${API_KEY}&id=${IPL_SERIES_ID}`);
-      const apiData = await response.json();
-      matchList = apiData.data?.matchList || [];
-      if (matchList.length > 0) {
-        // Cache the live match statuses for 5 minutes (300s) to prevent over-polling
-        await redis.setex(seriesCacheKey, 300, JSON.stringify(matchList));
-      }
-    }
-
     for (const challenge of challenges) {
-      const matchData = matchList.find(m => m.id === challenge.match_id);
-      if (!matchData) continue;
+      // ONLY grade our mock match during this testing phase
+      if (challenge.match_id !== mockMatchId) continue;
 
-      // We are allowing the AI Umpire to grade ongoing live matches!
-      // if (matchData.matchEnded) {
-        console.log(`🏏 Match ${challenge.match_name} detected! Unleashing AI on Challenge ${challenge.id}...`);
+      console.log(`🏏 Live Match ${challenge.match_name} detected! Evaluating pending questions for Challenge ${challenge.id}...`);
 
-        // Fetch deep scorecard — Check Redis First!
-        const scorecardCacheKey = `umpire_scorecard_${challenge.match_id}`;
-        let scoreData;
-        const cachedScorecard = await redis.get(scorecardCacheKey);
+      // Mock Scorecard injected as if fetched from Redis
+      const scoreData = { data: mockLiveScorecard };
 
-        if (cachedScorecard) {
-          console.log(`📦 Serving scorecard for ${challenge.match_name} securely from Redis cache.`);
-          scoreData = JSON.parse(cachedScorecard);
-        } else {
-          console.log(`🌐 Pulling scorecard from CricAPI to Redis...`);
-          const scoreRes = await fetch(`${BASE_URL}/match_scorecard?apikey=${API_KEY}&id=${challenge.match_id}`);
-          scoreData = await scoreRes.json();
-          
-          if (scoreData.status === "success") {
-             // Cache the scorecard (shorter TTL now since it's a live match that will change)
-             await redis.setex(scorecardCacheKey, 300, JSON.stringify(scoreData));
-          }
-        }
+      // 3. Strict Prompting to Gemini 2.5 Flash
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: { responseMimeType: "application/json" }
+      });
 
-        // 3. Prompt Gemini
-        const model = genAI.getGenerativeModel({
-          model: "gemini-2.5-flash-lite",
-          generationConfig: { responseMimeType: "application/json" }
-        });
+      // Filter only questions that haven't been resolved yet (answer === -1)
+      const questionsToGrade = challenge.questions.map((q, i) => ({ ...q, originalIndex: i }))
+                                                  .filter(q => q.answer === -1);
 
-        const prompt = `
-You are an expert cricket AI Umpire. Analyze the following match scorecard and evaluate each question.
+      if (questionsToGrade.length === 0) {
+         // Should realistically never happen since is_resolved=false
+         continue; 
+      }
 
-MATCH SCORECARD:
+      const prompt = `
+You are an expert incremental cricket AI Umpire. Analyze the provided LIVE match scorecard and cautiously evaluate ONLY the specific pending questions.
+
+LIVE MATCH SCORECARD:
 ${JSON.stringify(scoreData.data)}
 
-CHALLENGE QUESTIONS:
-${challenge.questions.map((q, i) => `Q${i}: ${q.question} (Options: ${q.options.map((o, j) => `${j}:${o}`).join(', ')})`).join('\n')}
+PENDING QUESTIONS TO GRADE:
+${questionsToGrade.map(q => `Q_IDX_${q.originalIndex}: ${q.question} (Options: ${q.options.map((o, j) => `${j}:${o}`).join(', ')})`).join('\n')}
 
-1. Evaluate the question against the scorecard. For "Man of the Match", explicitly look for fields like "playerOfTheMatch" or "manOfTheMatch" in the JSON. Do NOT assume the top run scorer is the Man of the Match.
-2. If the match is in the future/ongoing, you MUST hallucinate a realistic outcome to allow our demo to function.
-3. BE SMART ABOUT NAME MATCHING. If the options contain a typo, a first name, or a phonetic equivalent (e.g., "suryavamshi" matches "Vaibhav Sooryavanshi", "jadega" matches "Ravindra Jadeja", "nandre burger" matches "Burger"), consider that option CORRECT.
-4. If the correct answer (accounting for loose name matching) IS among the options, set "answer_index" to that option's 0-based index.
-5. ONLY if the correct answer is TRULY NOT among the options in any form, set "answer_index" to null. 
-6. Provide a "result_text" (max 15 words) stating the actual result (e.g. "Burger won Man of the Match"). DO NOT append phrases like "(not in options)".
+STRICT RULES (NO HALLUCINATION):
+1. The match is currently LIVE (matchEnded: false). 
+2. BE EXTREMELY STRICT ABOUT EVENTS NOT CONCLUDING YET. Never assume or project future outcomes.
+3. If checking a player's final score (e.g. ">50"), check the "dismissal-text" or "out" status. If they are "not out", the event has not concluded. Even if they currently have 51 runs ("not out"), return "UNRESOLVED" because their final score might be >80 later. You can only grade a batsman's score if they are definitively "out" (dismissed), or if the innings is completely over.
+4. If a question is about who wins the match/Man of the Match, and matchEnded is false, return "UNRESOLVED".
+5. If there is absolute, definitive evidence in the scorecard that the specific event for the question has concluded permanently, then return "RESOLVED" and provide the correct "answer_index" (0-based) and "result_text". 
+6. When "RESOLVED", if the true answer is NOT in the options, set "answer_index" to null.
+7. Be smart about typos or shortened names in the options (e.g., "Virat Kohli" matches "Virat").
 
-Return ONLY a valid JSON array, one object per question, in this exact format:
+Format your exact JSON response as an array of objects corresponding to the questions asked, respecting their original order:
 [
-  { "answer_index": 0, "result_text": "Rohit scored 65 runs" },
-  { "answer_index": null, "result_text": "Burger won Man of the Match" }
+  { "status": "RESOLVED", "answer_index": 0, "result_text": "Virat Kohli was dismissed lbw for 35 runs" },
+  { "status": "UNRESOLVED", "answer_index": null, "result_text": "Faf du Plessis is still batting (not out)" }
 ]
-        `;
+      `;
 
-        const result = await model.generateContent(prompt);
-        const geminiResults = JSON.parse(result.response.text());
-        const correctAnswers = geminiResults.map(r => r.answer_index);
+      const result = await model.generateContent(prompt);
+      let geminiResults = [];
+      try {
+         geminiResults = JSON.parse(result.response.text());
+      } catch (e) {
+         console.error("Failed to parse Gemini JSON:", e);
+         continue;
+      }
 
-        // Skip grading if any question explicitly returns -1 (meaning data unavailable and refused to hallucinate)
-        // Note: null means the question is resolved but the real answer wasn't in the options.
-        /* if (correctAnswers.includes(-1)) {
-          console.log(`⏳ Match ${challenge.match_name} lacks sufficient data for a verdict. Will try again later.`);
-          continue; 
-        } */
+      let hasNewResolvedQuestions = false;
+      const newlyResolvedQuestionIndexes = [];
 
-        // 4. Grade responses and fetch user profiles
-        const { data: rawResponses } = await supabase
-          .from('challenge_responses')
-          .select('*')
-          .eq('challenge_id', challenge.id);
+      // Apply the AI's grading back to our challenge object
+      geminiResults.forEach((res, indexInList) => {
+         const origIndex = questionsToGrade[indexInList].originalIndex;
+         if (res.status === "RESOLVED") {
+            challenge.questions[origIndex].answer = res.answer_index;
+            hasNewResolvedQuestions = true;
+            newlyResolvedQuestionIndexes.push({ origIndex, res });
+         }
+      });
 
-        let responses = rawResponses || [];
+      if (!hasNewResolvedQuestions) {
+         console.log(`⏳ No new events conclusively finished for challenge ${challenge.id}. Waiting for next cycle.`);
+         continue;
+      }
 
-        if (responses.length > 0) {
-          const userIds = [...new Set(responses.map(r => r.user_id))];
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url, email')
-            .in('id', userIds);
-          
-          const profileMap = {};
-          (profiles || []).forEach(p => { profileMap[p.id] = p; });
-          
-          responses = responses.map(r => ({
-            ...r,
-            profiles: profileMap[r.user_id] || null
-          }));
-        }
+      console.log(`🌟 Newly Resolved Questions for challenge ${challenge.id}: ${newlyResolvedQuestionIndexes.length}`);
 
-        // Fetch creator's profile manually
-        const { data: creatorProfile } = await supabase
+      // 4. Grade Responses & Fetch Profiles
+      const { data: rawResponses } = await supabase
+        .from('challenge_responses')
+        .select('*')
+        .eq('challenge_id', challenge.id);
+
+      let responses = rawResponses || [];
+      if (responses.length > 0) {
+        const userIds = [...new Set(responses.map(r => r.user_id))];
+        const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name, avatar_url, email')
-          .eq('id', challenge.creator_id)
-          .single();
+          .in('id', userIds);
+        
+        const profileMap = {};
+        (profiles || []).forEach(p => { profileMap[p.id] = p; });
+        
+        responses = responses.map(r => ({ ...r, profiles: profileMap[r.user_id] || null }));
+      }
 
-        let creatorScore = 0;
-        const creatorAnswers = challenge.questions.map(q => q.answer);
-        creatorAnswers.forEach((ans, i) => {
-          if (ans === correctAnswers[i]) creatorScore += 20;
-        });
+      // 5. Generate a Feed Post specifically for each newly resolved question!
+      // This is the true incremental feed feature.
+      for (const { origIndex, res: aiRes } of newlyResolvedQuestionIndexes) {
+         const q = challenge.questions[origIndex];
+         const officialAnsText = aiRes.result_text || (q.answer !== null ? q.options[q.answer] : "None of the options");
+         
+         const participants = responses ? responses.map(resp => {
+           const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
+           const img = resp.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
+           const isCorrect = q.answer !== null && resp.answers[origIndex] === q.answer;
+           return {
+              id: resp.user_id,
+              n: name,
+              img: img,
+              pts: isCorrect ? "+20" : "0", 
+              ok: isCorrect,
+              ans: q.options[resp.answers[origIndex]] || "Skipped/Pending" 
+           };
+         }) : [];
 
-        // Synthesize creator's response
-        const creatorResponse = {
-           id: 'creator-' + challenge.id,
-           user_id: challenge.creator_id,
-           answers: creatorAnswers,
-           score: creatorScore,
-           profiles: creatorProfile || null,
-           is_creator: true
-        };
+         const postData = {
+            type: 'q_result',
+            q: q.question,
+            off: officialAnsText,
+            total_q: challenge.questions.length,
+            parts: participants
+         };
 
-        // Add creator to the participants list!
-        responses.unshift(creatorResponse);
+         await supabase.from('feed_posts').insert({
+           challenge_id: challenge.id,
+           creator_id: challenge.creator_id,
+           match_id: challenge.match_id,
+           match_name: challenge.match_name,
+           content: JSON.stringify(postData)
+         });
+      }
 
-        let participantDetails = '';
+      // Check if ALL questions across the challenge are now fully resolved
+      const isCompletelyResolved = challenge.questions.every(q => q.answer !== -1);
 
-        if (responses && responses.length > 0) {
-          for (const resp of responses) {
-            if (resp.is_creator) continue; // Do not update DB for the synthesized creator response
-
+      if (isCompletelyResolved) {
+         // Calculate final scores across all questions
+         for (const resp of responses) {
             let score = 0;
             resp.answers.forEach((ans, i) => {
-              if (ans === correctAnswers[i]) score += 20;
+              if (ans !== -1 && ans === challenge.questions[i].answer) score += 20;
             });
-            resp.score = score; // Update in-memory so leaderboard reads correct values
             await supabase.from('challenge_responses').update({ score }).eq('id', resp.id);
-          }
-        }
+            resp.score = score; // sync for leaderboard
+         }
 
-        // 5. Update challenge.questions with AI correct answers
-        const updatedQuestions = challenge.questions.map((q, i) => ({
-          ...q,
-          answer: correctAnswers[i] // Overwrite creator's answer with AI's official answer
-        }));
+         // Generate Final Leaderboard Post
+         const leaderboardParticipants = responses.map(resp => {
+            const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
+            const img = resp.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
+            return { id: resp.user_id, n: name, img, score: resp.score };
+         }).sort((a, b) => b.score - a.score);
 
-        // 6. Generate detailed feed post FOR EACH QUESTION
-        for (let i = 0; i < challenge.questions.length; i++) {
-           const q = challenge.questions[i];
-           // If answer is null, use the result text, otherwise fallback to the option array text
-           const officialAnsText = geminiResults[i]?.result_text || (correctAnswers[i] !== null ? q.options[correctAnswers[i]] : "None of the options");
-           
-           const participants = responses ? responses.map(resp => {
-             const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
-             const img = resp.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
-             const isCorrect = correctAnswers[i] !== null && resp.answers[i] === correctAnswers[i];
-             return {
-                id: resp.user_id,
-                n: name,
-                img: img,
-                pts: isCorrect ? "+20" : "+0",
-                ok: isCorrect,
-                ans: q.options[resp.answers[i]]
-             };
-           }) : [];
+         leaderboardParticipants.forEach((p, idx) => {
+            if (p.score === 0) p.medal = '💔';
+            else if (idx === 0) p.medal = '🥇';
+            else if (idx === 1) p.medal = '🥈';
+            else if (idx === 2) p.medal = '🥉';
+            else p.medal = '🏅';
+         });
 
-           const postData = {
-              type: 'q_result',
-              q: q.question,
-              off: officialAnsText,
-              total_q: challenge.questions.length,
-              parts: participants
-           };
+         const leaderboardData = {
+            type: 'leaderboard',
+            match_name: challenge.match_name,
+            short_id: challenge.short_id,
+            total_q: challenge.questions.length,
+            parts: leaderboardParticipants
+         };
 
-           await supabase.from('feed_posts').insert({
-             challenge_id: challenge.id,
-             creator_id: challenge.creator_id,
-             match_id: challenge.match_id,
-             match_name: challenge.match_name,
-             content: JSON.stringify(postData)
-           });
-        }
+         await supabase.from('feed_posts').insert({
+            challenge_id: challenge.id,
+            creator_id: challenge.creator_id,
+            match_id: challenge.match_id,
+            match_name: challenge.match_name,
+            content: JSON.stringify(leaderboardData)
+         });
+      }
 
-        // 6.5 Generate Final Leaderboard Post
-        if (responses && responses.length > 0) {
-          const leaderboardParticipants = responses.map(resp => {
-             const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
-             const img = resp.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
-             return {
-                id: resp.user_id,
-                n: name,
-                img: img,
-                score: resp.score
-             };
-          }).sort((a, b) => b.score - a.score);
-
-          // Assign medals (only for those who scored something)
-          leaderboardParticipants.forEach((p, idx) => {
-             if (p.score === 0) p.medal = '💔';
-             else if (idx === 0) p.medal = '🥇';
-             else if (idx === 1) p.medal = '🥈';
-             else if (idx === 2) p.medal = '🥉';
-             else p.medal = '🏅';
-          });
-
-          const leaderboardData = {
-             type: 'leaderboard',
-             match_name: challenge.match_name,
-             short_id: challenge.short_id,
-             total_q: challenge.questions.length,
-             parts: leaderboardParticipants
-          };
-
-          await supabase.from('feed_posts').insert({
-             challenge_id: challenge.id,
-             creator_id: challenge.creator_id,
-             match_id: challenge.match_id,
-             match_name: challenge.match_name,
-             content: JSON.stringify(leaderboardData)
-          });
-        }
-
-        // 7. Mark resolved and save updated questions
-        await supabase.from('challenges').update({ 
-          is_resolved: true,
-          questions: updatedQuestions 
-        }).eq('id', challenge.id);
-          
-        console.log(`✅ AI Umpire successfully resolved Challenge ${challenge.id}!`);
-      // } // <-- Commented out to match the opening brace
+      // 6. Save the partial or fully updated state to Supabase
+      await supabase.from('challenges').update({ 
+        is_resolved: isCompletelyResolved,
+        questions: challenge.questions 
+      }).eq('id', challenge.id);
+        
+      console.log(`✅ Saved incremental updates (Fully Resolved: ${isCompletelyResolved}) for Challenge ${challenge.id}!`);
     }
   } catch (error) {
     console.error('❌ AI Umpire Error:', error);
   }
 }
 
-// Run every 5 minutes
-cron.schedule('*/5 * * * *', runAIUmpire);
+// Run every 2 minutes
+cron.schedule('*/2 * * * *', runAIUmpire);
 
 // Run immediately on boot
 runAIUmpire();
-
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);

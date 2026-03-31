@@ -9,6 +9,7 @@ import Profile from './pages/Profile'
 import Login from './pages/Login'
 import CreateChallenge from './pages/CreateChallenge'
 import PlayChallenge from './pages/PlayChallenge'
+import ProtectedRoute from './components/ProtectedRoute'
 
 function NotFound() {
   return (
@@ -81,11 +82,11 @@ export default function App() {
           <main>
             <Routes>
               <Route path="/" element={<Login />} />
-              <Route path="/home" element={<Home />} />
-              <Route path="/messages" element={<Messages />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/challenge/create/:matchId" element={<CreateChallenge />} />
-              <Route path="/challenge/:id" element={<PlayChallenge />} />
+              <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+              <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/challenge/create/:matchId" element={<ProtectedRoute><CreateChallenge /></ProtectedRoute>} />
+              <Route path="/challenge/:id" element={<ProtectedRoute><PlayChallenge /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

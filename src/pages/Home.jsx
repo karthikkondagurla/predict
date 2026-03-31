@@ -9,7 +9,7 @@ import ChallengeCard from '../components/ChallengeCard'
 import FeedPost from '../components/FeedPost'
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const [matches, setMatches] = useState([])
   const [feedItems, setFeedItems] = useState([]) // mixed challenges and posts
   const [friendIds, setFriendIds] = useState(null)
@@ -38,21 +38,52 @@ export default function Home() {
       const allowedIds = [...ids, user.id]
       setFriendIds(ids)
 
-      // 2. Fetch challenges
-      const challenges = await getRecentChallenges(allowedIds, 20)
-      const formattedChallenges = challenges.map(c => ({ type: 'challenge', data: c, date: new Date(c.created_at) }))
+      // 2. Fetch challenges created by self/friends
+      const createdChallenges = await getRecentChallenges(allowedIds, 20)
+      
+      // 3. Fetch challenges user has participated in
+      const { data: participatedData } = await supabase
+        .from('challenge_responses')
+        .select('created_at, challenges(*)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20)
 
-      // 3. Fetch feed posts
-      let postsQuery = supabase.from('feed_posts').select('*').order('created_at', { ascending: false }).limit(20)
-      if (ids.length > 0) {
-        postsQuery = postsQuery.in('creator_id', allowedIds)
-      } else {
-        postsQuery = postsQuery.eq('creator_id', user.id)
+      // Collect all raw challenges and deduplicate by ID
+      const allChallengesMap = {}
+      createdChallenges.forEach(c => allChallengesMap[c.id] = { type: 'challenge', data: c, date: new Date(c.created_at) })
+      
+      if (participatedData) {
+        participatedData.forEach(p => {
+          if (p.challenges && !allChallengesMap[p.challenges.id]) {
+            allChallengesMap[p.challenges.id] = { type: 'challenge', data: p.challenges, date: new Date(p.created_at) }
+          }
+        })
       }
-      const { data: posts } = await postsQuery
-      const formattedPosts = (posts || []).map(p => ({ type: 'post', data: p, date: new Date(p.created_at) }))
+      const formattedChallenges = Object.values(allChallengesMap)
 
-      // 4. Combine and sort
+      // 4. Fetch feed posts
+      // Posts created by friends/self OR posts belonging to challenges we just fetched
+      const challengeIds = formattedChallenges.map(c => c.data.id)
+      
+      let postsQuery = supabase.from('feed_posts').select('*').order('created_at', { ascending: false }).limit(30)
+      
+      if (challengeIds.length > 0 && ids.length > 0) {
+        postsQuery = postsQuery.or(`creator_id.in.(${allowedIds.join(',')}),challenge_id.in.(${challengeIds.join(',')})`)
+      } else if (challengeIds.length > 0) {
+        postsQuery = postsQuery.or(`creator_id.eq.${user.id},challenge_id.in.(${challengeIds.join(',')})`)
+      } else {
+        postsQuery = postsQuery.in('creator_id', allowedIds)
+      }
+
+      const { data: posts } = await postsQuery
+      
+      // Deduplicate posts
+      const uniquePostsMap = {}
+      ;(posts || []).forEach(p => uniquePostsMap[p.id] = { type: 'post', data: p, date: new Date(p.created_at) })
+      const formattedPosts = Object.values(uniquePostsMap)
+
+      // 5. Combine and sort
       let combined = [...formattedChallenges, ...formattedPosts].sort((a, b) => b.date - a.date)
       
       setFeedItems(combined)
@@ -74,15 +105,7 @@ export default function Home() {
 
   const hasFriends = friendIds !== null && friendIds.length > 0
 
-  if (authLoading || !user) {
-    return (
-      <div className="page">
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-          <span className="spinner" style={{ width: 40, height: 40 }}></span>
-        </div>
-      </div>
-    )
-  }
+
 
   return (
     <div className="page">

@@ -17,7 +17,9 @@ export default function Login() {
 
   // If already authenticated, redirect to the matches (Home) page
   if (user) {
-    return <Navigate to="/home" replace />
+    const redirectPath = sessionStorage.getItem('redirectAfterAuth') || '/home'
+    if (redirectPath !== '/home') sessionStorage.removeItem('redirectAfterAuth')
+    return <Navigate to={redirectPath} replace />
   }
 
   const handleGoogleSignIn = async () => {

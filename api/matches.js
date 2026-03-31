@@ -1,12 +1,8 @@
-// Vercel Serverless Function: /api/matches
-// This replaces the local Express server route for use on Vercel
-
 const API_KEY = process.env.VITE_CRICAPI_KEY;
 const BASE_URL = 'https://api.cricapi.com/v1';
 const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 
 export default async function handler(req, res) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (!API_KEY) {
@@ -22,10 +18,15 @@ export default async function handler(req, res) {
     }
 
     const rawMatches = data.data?.matchList || [];
-    const todayStr = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD" in UTC
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
 
     const filteredMatches = rawMatches.filter(match => {
-      return match.dateTimeGMT && match.dateTimeGMT.startsWith(todayStr);
+      return match.dateTimeGMT && (match.dateTimeGMT.startsWith(todayStr) || match.dateTimeGMT.startsWith(yesterdayStr));
     });
 
     res.status(200).json({
