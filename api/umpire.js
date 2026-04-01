@@ -8,7 +8,11 @@ const supabase = createClient(
 );
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-const redis = new Redis(process.env.REDIS_URL);
+const redis = new Redis(process.env.REDIS_URL, {
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+  reconnectOnError: (err) => ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET'].some(e => err.message.includes(e))
+});
 
 async function getMatchScorecard(matchId) {
   const cachedScorecard = await redis.get(`scorecard:${matchId}`);

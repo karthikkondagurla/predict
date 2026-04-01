@@ -23,14 +23,24 @@ const supabase = createClient(
 );
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-// Initialize Redis client
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+// Initialize Redis client with retry config
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+  reconnectOnError: (err) => {
+    const targetErrors = ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET'];
+    return targetErrors.some(e => err.message.includes(e));
+  }
+});
 
 redis.on('connect', () => {
   console.log('✅ Connected to Redis successfully');
 });
 redis.on('error', (err) => {
-  console.error('❌ Redis connection error:', err);
+  console.error('❌ Redis connection error:', err.message);
 });
 
 // --- CRICAPI CONFIG ---
