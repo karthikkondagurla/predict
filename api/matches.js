@@ -1,39 +1,28 @@
 const API_KEY = process.env.VITE_CRICAPI_KEY;
 const BASE_URL = 'https://api.cricapi.com/v1';
 const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  if (!API_KEY) {
-    return res.status(500).json({ status: 'error', reason: 'Missing CricAPI Key' });
-  }
-
   try {
-    const response = await fetch(`${BASE_URL}/series_info?apikey=${API_KEY}&id=${IPL_SERIES_ID}`);
-    const data = await response.json();
-
-    if (data.status !== "success") {
-      throw new Error(data.reason || "Failed to fetch matches from CricAPI");
+    // Only serve from Redis (populated by cron job every 30 mins)
+    const cachedMatches = await redis.get('live_matches');
+    if (cachedMatches) {
+      console.log('📦 Serving matches from Redis (Serverless)');
+      return res.status(200).json({
+        status: 'success',
+        data: JSON.parse(cachedMatches),
+        source: 'cache'
+      });
     }
 
-    const rawMatches = data.data?.matchList || [];
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    console.log('⚠️ No matches in Redis (waiting for cron job)');
+    return res.status(200).json({ status: 'success', data: [], source: 'empty' });
     
-    const todayStr = today.toISOString().split('T')[0];
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    const filteredMatches = rawMatches.filter(match => {
-      return match.dateTimeGMT && (match.dateTimeGMT.startsWith(todayStr) || match.dateTimeGMT.startsWith(yesterdayStr));
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: filteredMatches,
-      source: 'api'
-    });
   } catch (error) {
     console.error("API Route Error:", error);
     res.status(500).json({ status: 'error', reason: error.message });

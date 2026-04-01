@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import Redis from 'ioredis';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -7,8 +8,15 @@ const supabase = createClient(
 );
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-const API_KEY = process.env.VITE_CRICAPI_KEY;
-const BASE_URL = 'https://api.cricapi.com/v1';
+const redis = new Redis(process.env.REDIS_URL);
+
+async function getMatchScorecard(matchId) {
+  const cachedScorecard = await redis.get(`scorecard:${matchId}`);
+  if (cachedScorecard) {
+    return JSON.parse(cachedScorecard);
+  }
+  return null;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,12 +39,11 @@ export default async function handler(req, res) {
     const matchIds = [...new Set(challenges.map(c => c.match_id))];
     const matchScorecards = {};
 
-    console.log(`📡 Fetching live scorecards for ${matchIds.length} matches from CricAPI...`);
+    console.log(`📡 Fetching live scorecards for ${matchIds.length} matches from Redis/API...`);
     for (const matchId of matchIds) {
-      const scoreRes = await fetch(`${BASE_URL}/match_scorecard?apikey=${API_KEY}&id=${matchId}`);
-      const scoreData = await scoreRes.json();
-      if (scoreData.status === "success" && scoreData.data) {
-        matchScorecards[matchId] = scoreData.data;
+      const scorecard = await getMatchScorecard(matchId);
+      if (scorecard) {
+        matchScorecards[matchId] = scorecard;
       }
     }
 

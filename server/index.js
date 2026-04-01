@@ -33,65 +33,114 @@ redis.on('error', (err) => {
   console.error('❌ Redis connection error:', err);
 });
 
-// --- MOCK DATA FOR TESTING INCREMENTAL EVALUATION ---
-const mockMatchId = "mock-live-match-123";
+// --- CRICAPI CONFIG ---
+const API_KEY = process.env.VITE_CRICAPI_KEY;
+const BASE_URL = 'https://api.cricapi.com/v1';
+const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 
-const mockLiveMatches = [
-  {
-    id: mockMatchId,
-    name: "Royal Challengers Bengaluru vs Chennai Super Kings",
-    matchType: "t20",
-    status: "Chennai Super Kings elected to bowl",
-    venue: "M. Chinnaswamy Stadium, Bengaluru",
-    date: new Date().toISOString().split('T')[0],
-    dateTimeGMT: new Date().toISOString().split('T')[0] + "T14:30:00.000Z",
-    teams: ["Royal Challengers Bengaluru", "Chennai Super Kings"],
-    teamInfo: [
-      { name: "Royal Challengers Bengaluru", shortname: "RCB", img: "https://g.cricapi.com/i/teams/64.jpg" },
-      { name: "Chennai Super Kings", shortname: "CSK", img: "https://g.cricapi.com/i/teams/58.jpg" }
-    ],
-    score: [
-      { r: 45, w: 1, o: 5.2, inning: "RCB Inning 1" }
-    ],
-    matchStarted: true,
-    matchEnded: false
+// --- 1. FETCH & CACHE LIVE MATCHES & SCORECARDS (Runs every 30 mins) ---
+async function fetchAndCacheMatches() {
+  if (!process.env.VITE_CRICAPI_KEY) {
+    console.log('⚠️ No CricAPI Key found in .env. Skipping fetch.');
+    return;
   }
-];
 
-const mockLiveScorecard = {
-  id: mockMatchId,
-  name: "Royal Challengers Bengaluru vs Chennai Super Kings",
-  matchType: "t20",
-  status: "CSK elected to bowl",
-  matchEnded: false,
-  score: [
-      { r: 45, w: 1, o: 5.2, inning: "RCB Inning 1" }
-  ],
-  scorecard: [
-    {
-      inning: "RCB Inning 1",
-      batting: [
-        { batsman: { name: "Virat Kohli" }, r: 35, b: 18, "4s": 5, "6s": 1, "dismissal-text": "lbw b Jadeja", "out": true },
-        { batsman: { name: "Faf du Plessis" }, r: 10, b: 14, "4s": 1, "6s": 0, "dismissal-text": "not out", "out": false }
-      ],
-      bowling: [
-        { bowler: { name: "Ravindra Jadeja" }, o: 2, m: 0, r: 12, w: 1, eco: 6.0 }
-      ]
+  console.log('📡 Fetching live matches from CricAPI...');
+  try {
+    const response = await fetch(`${BASE_URL}/series_info?apikey=${API_KEY}&id=${IPL_SERIES_ID}`);
+    const data = await response.json();
+
+    if (data.status !== "success") {
+      throw new Error(data.reason || "Failed to fetch matches");
     }
-  ]
-};
-// ----------------------------------------------------
 
-// API Route forcibly returning the mock match instead of calling CricAPI
+    const rawMatches = data.data?.matchList || [];
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    // Filter matches from today and yesterday
+    const filteredMatches = rawMatches.filter(match => {
+      return match.dateTimeGMT && (match.dateTimeGMT.startsWith(todayStr) || match.dateTimeGMT.startsWith(yesterdayStr));
+    });
+
+    // Store in Redis with 1-hour expiry
+    if (filteredMatches.length > 0) {
+      await redis.set('live_matches', JSON.stringify(filteredMatches));
+      console.log(`💾 Cached ${filteredMatches.length} matches to Redis`);
+
+      // Also fetch and cache scorecards for these matches
+      for (const match of filteredMatches) {
+        await fetchAndCacheScorecard(match.id);
+      }
+    } else {
+      console.log('⚠️ No matches found for today/yesterday.');
+    }
+
+  } catch (error) {
+    console.error('❌ Error fetching matches:', error);
+  }
+}
+
+async function fetchAndCacheScorecard(matchId) {
+  if (!process.env.VITE_CRICAPI_KEY) return;
+  
+  try {
+    const scoreRes = await fetch(`${BASE_URL}/match_scorecard?apikey=${API_KEY}&id=${matchId}`);
+    const scoreData = await scoreRes.json();
+    
+    if (scoreData.status === "success" && scoreData.data) {
+      // Cache it for 30 minutes (TTL matches the fetch interval)
+      await redis.set(`scorecard:${matchId}`, JSON.stringify(scoreData.data), 'EX', 1800);
+      console.log(`💾 Cached scorecard for ${matchId}`);
+    }
+  } catch (e) {
+    console.error(`Failed to fetch/cache scorecard for ${matchId}`, e);
+  }
+}
+
+// Run every 30 minutes
+cron.schedule('*/30 * * * *', fetchAndCacheMatches);
+
+// Run immediately on boot to populate cache
+fetchAndCacheMatches();
+
+// --- 2. API ROUTE: GET LIVE MATCHES ---
 app.get('/api/matches', async (req, res) => {
-  console.log('📦 Serving Mock Live Match to the frontend');
-  return res.json({ status: 'success', data: mockLiveMatches, source: 'mock' });
+  try {
+    // Only serve from Redis (populated by cron job every 30 mins)
+    const cachedMatches = await redis.get('live_matches');
+    
+    if (cachedMatches) {
+      console.log('📦 Serving matches from Redis Cache');
+      return res.json({ status: 'success', data: JSON.parse(cachedMatches), source: 'cache' });
+    }
+
+    console.log('⚠️ No matches in Redis (waiting for cron job)');
+    return res.status(200).json({ status: 'success', data: [], source: 'empty' });
+
+  } catch (error) {
+    console.error("API Error:", error);
+    res.status(500).json({ status: 'error', reason: error.message });
+  }
 });
 
+// --- 3. HELPER: FETCH SCORECARD ---
+async function getMatchScorecard(matchId) {
+  // 1. Check Redis only
+  const cachedScorecard = await redis.get(`scorecard:${matchId}`);
+  if (cachedScorecard) {
+    return JSON.parse(cachedScorecard);
+  }
 
-// ---------------------------------------------------------
-// 🤖 INCREMENTAL AI UMPIRE CRON JOB (Runs frequently)
-// ---------------------------------------------------------
+  console.log(`⚠️ No scorecard found in Redis for ${matchId}. Waiting for cron job to populate cache.`);
+  return null;
+}
+
+// --- 4. INCREMENTAL AI UMPIRE CRON JOB ---
 async function runAIUmpire() {
   console.log('🤖 Running Incremental AI Umpire Cron Job...');
   if (!process.env.GEMINI_API_KEY) {
@@ -111,13 +160,15 @@ async function runAIUmpire() {
     }
 
     for (const challenge of challenges) {
-      // ONLY grade our mock match during this testing phase
-      if (challenge.match_id !== mockMatchId) continue;
-
       console.log(`🏏 Live Match ${challenge.match_name} detected! Evaluating pending questions for Challenge ${challenge.id}...`);
 
-      // Mock Scorecard injected as if fetched from Redis
-      const scoreData = { data: mockLiveScorecard };
+      // Fetch Live Scorecard (from Redis or API)
+      const scoreData = await getMatchScorecard(challenge.match_id);
+      
+      if (!scoreData) {
+        console.log(`⚠️ No live scorecard available for match ${challenge.match_id}, skipping.`);
+        continue;
+      }
 
       // 3. Strict Prompting to Gemini 2.5 Flash
       const model = genAI.getGenerativeModel({
@@ -138,7 +189,7 @@ async function runAIUmpire() {
 You are an expert incremental cricket AI Umpire. Analyze the provided LIVE match scorecard and cautiously evaluate ONLY the specific pending questions.
 
 LIVE MATCH SCORECARD:
-${JSON.stringify(scoreData.data)}
+${JSON.stringify(scoreData)}
 
 PENDING QUESTIONS TO GRADE:
 ${questionsToGrade.map(q => `Q_IDX_${q.originalIndex}: ${q.question} (Options: ${q.options.map((o, j) => `${j}:${o}`).join(', ')})`).join('\n')}
