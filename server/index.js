@@ -26,10 +26,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 // Initialize Redis client with retry config
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: 3,
+  enableOfflineQueue: false,
   retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
+  const delay = Math.min(times * 50, 2000);
+  return delay;
+},
   reconnectOnError: (err) => {
     const targetErrors = ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET'];
     return targetErrors.some(e => err.message.includes(e));

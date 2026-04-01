@@ -3,8 +3,9 @@ const BASE_URL = 'https://api.cricapi.com/v1';
 const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 import Redis from 'ioredis';
 
-const redis = new Redis(process.env.REDIS_URL, {
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: 3,
+  enableOfflineQueue: false,
   retryStrategy: (times) => Math.min(times * 50, 2000),
   reconnectOnError: (err) => ['ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET'].some(e => err.message.includes(e))
 });
@@ -26,9 +27,10 @@ export default async function handler(req, res) {
 
     console.log('⚠️ No matches in Redis (waiting for cron job)');
     return res.status(200).json({ status: 'success', data: [], source: 'empty' });
-    
+
   } catch (error) {
-    console.error("API Route Error:", error);
-    res.status(500).json({ status: 'error', reason: error.message });
+    console.error("API Route Error (Redis may be unavailable):", error.message);
+    // Return empty data instead of error to prevent frontend crash
+    return res.status(200).json({ status: 'success', data: [], source: 'redis_error' });
   }
 }
