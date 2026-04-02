@@ -141,12 +141,12 @@ async function hasActiveMatch() {
     if (m.matchStarted) return true;
 
     // If not explicitly marked started yet, check if we are past the start time
-    // Or within 15 mins of it (so we catch the toss and exact start)
+    // Or within 30 mins of it (so we catch the toss and exact start, allowing users to predict)
     if (m.dateTimeGMT) {
       // Append 'Z' to treat as UTC correctly if it's missing
       const timeStr = m.dateTimeGMT.endsWith('Z') ? m.dateTimeGMT : m.dateTimeGMT + 'Z';
       const startTime = new Date(timeStr).getTime();
-      if (now >= (startTime - 15 * 60 * 1000)) return true;
+      if (now >= (startTime - 30 * 60 * 1000)) return true;
     }
 
     return false;
