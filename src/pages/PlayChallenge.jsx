@@ -187,7 +187,7 @@ export default function PlayChallenge() {
             {submitted && !isCreator && (
                <div className="glass-card" style={{
                  padding: '2rem', textAlign: 'center', marginBottom: '1.5rem',
-                 border: '1px solid rgba(255, 152, 0, 0.3)', background: 'rgba(255, 152, 0, 0.05)',
+                 border: '1px solid rgba(255, 87, 34, 0.3)', background: 'rgba(255, 87, 34, 0.05)',
                }}>
                  <div style={{ fontSize: '3rem', marginBottom: '0.8rem' }}>⏳</div>
                  <h3 style={{ color: 'var(--gold)', marginBottom: '0.5rem' }}>Prediction Locked In!</h3>

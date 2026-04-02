@@ -187,7 +187,7 @@ export default function ChallengeCard({ challenge }) {
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{createdAt}</span>
                   <span style={{
                     fontSize: '0.65rem', fontWeight: 700, color: 'var(--gold)',
-                    background: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)',
+                    background: 'rgba(255, 87, 34, 0.1)', border: '1px solid rgba(255, 87, 34, 0.3)',
                     padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace',
                   }}>#{shortId}</span>
                 </div>

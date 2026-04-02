@@ -4,7 +4,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import Navbar from './components/Navbar'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
-import Messages from './pages/Messages'
+import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import UserProfile from './pages/UserProfile'
 import Login from './pages/Login'
@@ -84,7 +84,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Login />} />
               <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-              <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/user/:id" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
               <Route path="/challenge/create/:matchId" element={<ProtectedRoute><CreateChallenge /></ProtectedRoute>} />

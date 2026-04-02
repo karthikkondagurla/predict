@@ -49,81 +49,128 @@ const API_KEY = process.env.VITE_CRICAPI_KEY;
 const BASE_URL = 'https://api.cricapi.com/v1';
 const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 
-// --- 1. FETCH & CACHE LIVE MATCHES & SCORECARDS (Runs every 30 mins) ---
-async function fetchAndCacheMatches() {
-  if (!process.env.VITE_CRICAPI_KEY) {
-    console.log('⚠️ No CricAPI Key found in .env. Skipping fetch.');
-    return;
-  }
+// --- MATCH WINDOW CONFIG (IST = UTC+5:30) ---
+// Evening match: toss at 7:00 PM IST, ends ~11:30 PM IST
+const EVENING_WINDOW = { startHour: 19, startMin: 0, endHour: 23, endMin: 30 };
 
-  console.log('📡 Fetching live matches from CricAPI...');
+function isInMatchWindow() {
+  const now = new Date();
+  // Convert to IST (UTC+5:30)
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + istOffsetMs);
+  const h = ist.getUTCHours();
+  const m = ist.getUTCMinutes();
+  const totalMin = h * 60 + m;
+  const windowStart = EVENING_WINDOW.startHour * 60 + EVENING_WINDOW.startMin;
+  const windowEnd   = EVENING_WINDOW.endHour   * 60 + EVENING_WINDOW.endMin;
+  return totalMin >= windowStart && totalMin <= windowEnd;
+}
+
+// Timestamps to enforce intervals within the window
+let lastScorecardsRefresh = 0;
+let lastAIUmpire          = 0;
+const SCORECARD_INTERVAL_MS   = 5 * 60 * 1000;  // 5 minutes
+const AI_UMPIRE_INTERVAL_MS   = 2 * 60 * 1000;  // 2 minutes
+
+// --- 1a. FETCH SERIES INFO (once per day at window open) ---
+async function fetchAndCacheSeriesInfo() {
+  if (!process.env.VITE_CRICAPI_KEY) return;
+
+  console.log('📡 Fetching series info from CricAPI (once today)...');
   try {
     const response = await fetch(`${BASE_URL}/series_info?apikey=${API_KEY}&id=${IPL_SERIES_ID}`);
     const data = await response.json();
 
-    if (data.status !== "success") {
-      throw new Error(data.reason || "Failed to fetch matches");
-    }
+    if (data.status !== "success") throw new Error(data.reason || "Failed to fetch series info");
 
     const rawMatches = data.data?.matchList || [];
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    const todayStr = today.toISOString().split('T')[0];
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const todayStr = todayISTString();
 
-    // Filter matches from today and yesterday
-    const filteredMatches = rawMatches.filter(match => {
-      return match.dateTimeGMT && (match.dateTimeGMT.startsWith(todayStr) || match.dateTimeGMT.startsWith(yesterdayStr));
-    });
+    const todayMatches = rawMatches.filter(m => m.dateTimeGMT?.startsWith(todayStr));
 
-    // Store in Redis with 1-hour expiry
-    if (filteredMatches.length > 0) {
-      await redis.set('live_matches', JSON.stringify(filteredMatches));
-      console.log(`💾 Cached ${filteredMatches.length} matches to Redis`);
-
-      // Also fetch and cache scorecards for these matches
-      for (const match of filteredMatches) {
-        await fetchAndCacheScorecard(match.id);
-      }
+    if (todayMatches.length > 0) {
+      // Cache with 24hr TTL — won't change during the day
+      await redis.set('live_matches', JSON.stringify(todayMatches), 'EX', 86400);
+      console.log(`💾 Cached ${todayMatches.length} today's match(es) from series_info`);
     } else {
-      console.log('⚠️ No matches found for today/yesterday.');
+      console.log('⚠️ No matches scheduled for today.');
     }
 
+    seriesInfoFetchedDate = todayStr;
   } catch (error) {
-    console.error('❌ Error fetching matches:', error);
+    console.error('❌ Error fetching series info:', error);
   }
 }
 
-async function fetchAndCacheScorecard(matchId) {
+// --- 1b. REFRESH SCORECARDS EVERY 5 MIN (updates match cards on frontend) ---
+async function refreshScorecards() {
   if (!process.env.VITE_CRICAPI_KEY) return;
-  
-  try {
-    const scoreRes = await fetch(`${BASE_URL}/match_scorecard?apikey=${API_KEY}&id=${matchId}`);
-    const scoreData = await scoreRes.json();
-    
-    if (scoreData.status === "success" && scoreData.data) {
-      // Cache it for 30 minutes (TTL matches the fetch interval)
-      await redis.set(`scorecard:${matchId}`, JSON.stringify(scoreData.data), 'EX', 1800);
-      console.log(`💾 Cached scorecard for ${matchId}`);
-    }
-  } catch (e) {
-    console.error(`Failed to fetch/cache scorecard for ${matchId}`, e);
+
+  const cached = await redis.get('live_matches');
+  if (!cached) {
+    console.log('⚠️ No live_matches in Redis, skipping scorecard refresh.');
+    return;
   }
+
+  const matches = JSON.parse(cached);
+  for (const match of matches) {
+    try {
+      const scoreRes = await fetch(`${BASE_URL}/match_scorecard?apikey=${API_KEY}&id=${match.id}`);
+      const scoreData = await scoreRes.json();
+
+      if (scoreData.status === "success" && scoreData.data) {
+        // Update the scorecard cache (used by AI umpire)
+        await redis.set(`scorecard:${match.id}`, JSON.stringify(scoreData.data), 'EX', 600);
+
+        // Merge live status fields into the match card so the frontend stays updated
+        const updatedMatch = {
+          ...match,
+          matchStarted: scoreData.data.matchStarted ?? match.matchStarted,
+          matchEnded:   scoreData.data.matchEnded   ?? match.matchEnded,
+          status:       scoreData.data.status       ?? match.status,
+        };
+        matches[matches.indexOf(match)] = updatedMatch;
+
+        console.log(`💾 Refreshed scorecard for ${match.id}`);
+      }
+    } catch (e) {
+      console.error(`❌ Failed to refresh scorecard for ${match.id}`, e);
+    }
+  }
+
+  // Write updated match list back so /api/matches serves fresh card data
+  await redis.set('live_matches', JSON.stringify(matches), 'EX', 86400);
 }
 
-// Run every 30 minutes
-cron.schedule('*/30 * * * *', fetchAndCacheMatches);
+// --- DAILY SERIES INFO FETCH (midnight IST = 18:30 UTC) ---
+cron.schedule('30 18 * * *', fetchAndCacheSeriesInfo, { timezone: 'UTC' });
+console.log('✅ Series info scheduled daily at midnight IST (18:30 UTC)');
 
-// Run immediately on boot to populate cache
-fetchAndCacheMatches();
-console.log('✅ Match fetching from CricAPI is ENABLED');
+// --- MASTER SCHEDULER (runs every minute during match window) ---
+cron.schedule('* * * * *', async () => {
+  if (!isInMatchWindow()) return;
+
+  const now = Date.now();
+
+  // Refresh scorecards every 5 min
+  if (now - lastScorecardsRefresh >= SCORECARD_INTERVAL_MS) {
+    lastScorecardsRefresh = now;
+    await refreshScorecards();
+  }
+
+  // Run AI umpire every 2 min
+  if (now - lastAIUmpire >= AI_UMPIRE_INTERVAL_MS) {
+    lastAIUmpire = now;
+    await runAIUmpire();
+  }
+});
+
+console.log('✅ Match window scheduler is ENABLED (evening: 7:00 PM – 11:30 PM IST)');
 
 // --- 2. API ROUTE: GET LIVE MATCHES ---
 app.get('/api/matches', async (req, res) => {
   try {
-    // Only serve from Redis (populated by cron job every 30 mins)
+    // Only serve from Redis (populated by series_info once/day, updated by scorecards every 5 min)
     const cachedMatches = await redis.get('live_matches');
     
     if (cachedMatches) {
@@ -399,12 +446,7 @@ Format your exact JSON response as an array of objects corresponding to the ques
   }
 }
 
-// Run every 2 minutes
-cron.schedule('*/2 * * * *', runAIUmpire);
-
-// Run immediately on boot
-runAIUmpire();
-console.log('✅ AI Umpire cron job is ENABLED');
+// (AI Umpire is triggered by the master scheduler above)
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);

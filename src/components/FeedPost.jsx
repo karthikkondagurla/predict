@@ -39,7 +39,7 @@ export default function FeedPost({ post }) {
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{createdAt}</span>
           </div>
         </div>
-        <span className="badge" style={{ background: 'rgba(76, 175, 80, 0.15)', color: 'var(--green)', border: '1px solid rgba(76, 175, 80, 0.3)' }}>
+        <span className="badge" style={{ background: 'rgba(255, 87, 34, 0.12)', color: 'var(--gold-light)', border: '1px solid rgba(255, 87, 34, 0.3)' }}>
           Result
         </span>
       </div>
@@ -52,7 +52,7 @@ export default function FeedPost({ post }) {
             {qData.short_id && (
               <span style={{
                 fontSize: '0.65rem', fontWeight: 700, color: 'var(--gold)',
-                background: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)',
+                background: 'rgba(255, 87, 34, 0.1)', border: '1px solid rgba(255, 87, 34, 0.3)',
                 padding: '1px 5px', borderRadius: '3px', fontFamily: 'monospace',
               }}>#{qData.short_id}</span>
             )}
@@ -108,7 +108,7 @@ export default function FeedPost({ post }) {
                        const isMe = p.id === user?.id;
                        
                        return (
-                       <div key={p.rank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', borderRadius: '6px', background: isMe ? 'rgba(255, 87, 34, 0.1)' : 'rgba(0, 0, 0, 0.2)', border: isMe ? '1px solid var(--gold)' : '1px solid var(--border-glass)' }}>
+                       <div key={p.rank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', borderRadius: '6px', background: isMe ? 'rgba(255, 87, 34, 0.08)' : 'rgba(255, 255, 255, 0.02)', border: isMe ? '1px solid var(--gold)' : '1px solid var(--border-glass)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <span style={{ fontSize: '0.9rem', width: '20px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>#{p.rank}</span>
                             {p.medal && p.medal !== '🏅' && p.medal !== '💔' && <span style={{ fontSize: '1.25rem' }}>{p.medal}</span>}
@@ -159,7 +159,7 @@ export default function FeedPost({ post }) {
                       const isMe = p.id === user?.id;
 
                       return (
-                         <div key={rank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '8px', background: isMe ? 'rgba(255, 107, 53, 0.15)' : 'rgba(0,0,0,0.3)', border: isMe ? '1px solid var(--gold)' : '1px solid var(--border-glass)' }}>
+                         <div key={rank} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '8px', background: isMe ? 'rgba(255, 87, 34, 0.12)' : 'rgba(255, 255, 255, 0.03)', border: isMe ? '1px solid var(--gold)' : '1px solid var(--border-glass)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                               <span style={{ fontSize: '1rem', width: '24px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>#{rank}</span>
                               {p.medal && p.medal !== '🏅' && p.medal !== '💔' && <span style={{ fontSize: '1.25rem' }}>{p.medal}</span>}
