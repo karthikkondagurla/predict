@@ -38,16 +38,16 @@ export default function Home() {
       const allowedIds = [...ids, user.id]
       setFriendIds(ids)
 
-      // 2. Fetch challenges created by self/friends
-      const createdChallenges = await getRecentChallenges(allowedIds, 20)
-      
-      // 3. Fetch challenges user has participated in
-      const { data: participatedData } = await supabase
-        .from('challenge_responses')
-        .select('created_at, challenges(*)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(20)
+      // Parallelize fetching challenges and participated data
+      const [createdChallenges, { data: participatedData }] = await Promise.all([
+        getRecentChallenges(allowedIds, 20),
+        supabase
+          .from('challenge_responses')
+          .select('created_at, challenges(*)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(20)
+      ])
 
       // Collect all raw challenges and deduplicate by ID
       const allChallengesMap = {}
@@ -94,13 +94,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    loadMatches()
-  }, [])
-
-  useEffect(() => {
-    if (user) {
-      loadFeedData()
+    // Fire both data loads in parallel instead of sequentially
+    const initData = async () => {
+      await Promise.all([
+        loadMatches(),
+        user ? loadFeedData() : Promise.resolve()
+      ])
     }
+    initData()
   }, [user])
 
   const hasFriends = friendIds !== null && friendIds.length > 0

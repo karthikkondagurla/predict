@@ -32,7 +32,17 @@ export default function PlayChallenge() {
   useEffect(() => {
     async function load() {
       try {
-        const c = await getChallenge(id)
+        // Fire all independent database queries in parallel!
+        const [c, resps, { data: posts }] = await Promise.all([
+          getChallenge(id),
+          user ? getChallengeResponses(id) : Promise.resolve([]),
+          supabase
+            .from('feed_posts')
+            .select('*')
+            .eq('challenge_id', id)
+            .order('created_at', { ascending: true })
+        ])
+
         setChallenge(c)
         setAnswers(new Array(c.questions.length).fill(-1))
 
@@ -41,9 +51,8 @@ export default function PlayChallenge() {
           setShowShare(true)
         }
 
-        // Check if user already responded
+        // Apply user responses
         if (user) {
-          const resps = await getChallengeResponses(id)
           setResponses(resps)
           const myResponse = resps.find(r => r.user_id === user.id)
           if (myResponse) {
@@ -52,13 +61,9 @@ export default function PlayChallenge() {
             setSubmitted(true)
           }
         }
-        
-        if (c.is_resolved) {
-          const { data: posts } = await supabase
-            .from('feed_posts')
-            .select('*')
-            .eq('challenge_id', id)
-            .order('created_at', { ascending: true }) // chronological order
+
+        // Apply feed posts
+        if (c.is_resolved || posts?.length > 0) {
           const formattedPosts = (posts || []).map(p => ({ type: 'post', data: p }))
           setFeedPosts(formattedPosts)
         }

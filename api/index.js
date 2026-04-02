@@ -266,6 +266,9 @@ app.get('/api/cron/umpire', checkCronAuth, async (req, res) => {
 // --- 2. API ROUTE: GET LIVE MATCHES ---
 app.get('/api/matches', async (req, res) => {
   try {
+    // Tell Vercel Edge Network to cache this API response for 60 seconds for lightning-fast loads
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+
     // Only serve from Redis (populated by series_info once/day, updated by scorecards every 5 min)
     const cachedMatches = await redis.get('live_matches');
     
