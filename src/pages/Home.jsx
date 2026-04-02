@@ -14,6 +14,7 @@ export default function Home() {
   const [feedItems, setFeedItems] = useState([]) // mixed challenges and posts
   const [friendIds, setFriendIds] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [feedLoading, setFeedLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const loadMatches = async () => {
@@ -32,6 +33,7 @@ export default function Home() {
 
   const loadFeedData = async () => {
     if (!user?.id) return
+    setFeedLoading(true)
     try {
       // 1. Get friend IDs (+ own ID)
       const ids = await getFriendIds()
@@ -90,6 +92,8 @@ export default function Home() {
 
     } catch (err) {
       console.error('Failed to load feed:', err)
+    } finally {
+      setFeedLoading(false)
     }
   }
 
@@ -156,26 +160,31 @@ export default function Home() {
             Feed
           </h2>
 
-          {feedItems.length === 0 ? (
+          {feedLoading ? (
+            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+              {[1, 2, 3].map(i => (
+                <div key={i} className="glass-card" style={{
+                  height: '200px',
+                  background: 'var(--bg-glass)',
+                  animation: 'pulse 1.5s infinite ease-in-out',
+                  border: '1px solid var(--border-glass)'
+                }}></div>
+              ))}
+              <style>{`
+                @keyframes pulse {
+                  0% { opacity: 0.4; }
+                  50% { opacity: 0.8; background: rgba(255,255,255,0.05); }
+                  100% { opacity: 0.4; }
+                }
+              `}</style>
+            </div>
+          ) : feedItems.length === 0 ? (
             <div className="glass-card" style={{ padding: '2.5rem', textAlign: 'center' }}>
-              {!hasFriends ? (
-                <>
-                  <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🤝</div>
-                  <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Add friends to see activity!</h3>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-                    Your feed is private to your friends only.
-                  </p>
-                  <a href="/profile" className="btn btn-primary">Find Friends</a>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🏏</div>
-                  <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No activity yet</h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                    Click a match above to create the first challenge!
-                  </p>
-                </>
-              )}
+              <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🏏</div>
+              <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No activity yet</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                Click a match above to create the first challenge!
+              </p>
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
