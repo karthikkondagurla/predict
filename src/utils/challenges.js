@@ -110,6 +110,48 @@ export async function submitChallengeResponse({ challengeId, answers, score }) {
     .single()
 
   if (error) throw error
+
+  // --- AUTO-FRIEND FEATURE ---
+  // When a user participates in a challenge, automatically become friends with the creator
+  try {
+    const { data: challengeData } = await supabase
+      .from('challenges')
+      .select('creator_id')
+      .eq('id', challengeId)
+      .single()
+
+    if (challengeData && challengeData.creator_id !== user.id) {
+      const creatorId = challengeData.creator_id
+
+      // Check if a friendship already exists
+      const { data: existingFriendship } = await supabase
+        .from('friendships')
+        .select('id, status')
+        .or(`and(requester_id.eq.${user.id},receiver_id.eq.${creatorId}),and(requester_id.eq.${creatorId},receiver_id.eq.${user.id})`)
+        .maybeSingle()
+
+      if (!existingFriendship) {
+        // Create an accepted friendship instantly
+        await supabase
+          .from('friendships')
+          .insert({
+            requester_id: user.id,
+            receiver_id: creatorId,
+            status: 'accepted'
+          })
+      } else if (existingFriendship.status === 'pending') {
+        // If it was pending, upgrade it to accepted
+        await supabase
+          .from('friendships')
+          .update({ status: 'accepted' })
+          .eq('id', existingFriendship.id)
+      }
+    }
+  } catch (friendErr) {
+    console.error('Failed to auto-friend challenge creator:', friendErr)
+    // Don't throw the error, we still want the challenge submission to succeed
+  }
+
   return data
 }
 
