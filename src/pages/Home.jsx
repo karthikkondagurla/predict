@@ -119,15 +119,7 @@ export default function Home() {
               Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}!
             </p>
           </div>
-          {!loading && (
-            <button
-              className="btn btn-secondary"
-              onClick={() => { loadMatches(); loadFeedData() }}
-              style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            >
-              🔄 Refresh
-            </button>
-          )}
+
         </div>
 
         {/* Matches Section */}

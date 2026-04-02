@@ -43,6 +43,25 @@ export async function getFriends() {
 }
 
 /**
+ * Get accepted friends for any specific user
+ */
+export async function getUserFriends(userId) {
+  const { data, error } = await supabase
+    .from('friendships')
+    .select('id, status, requester_id, receiver_id, created_at, requester:profiles!requester_id(*), receiver:profiles!receiver_id(*)')
+    .eq('status', 'accepted')
+    .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`)
+
+  if (error) throw error
+
+  return (data || []).map(f => ({
+    friendshipId: f.id,
+    friend: f.requester_id === userId ? f.receiver : f.requester,
+    since: f.created_at,
+  }))
+}
+
+/**
  * Get pending friend requests (incoming to current user)
  */
 export async function getPendingRequests() {

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { supabase } from '../supabase'
 import { useAuth } from '../contexts/AuthContext'
+import Avatar from './Avatar'
 
 function timeAgo(dateString) {
   const date = new Date(dateString)
@@ -155,20 +157,18 @@ export default function CommentsSection({ challengeId, onClose }) {
               return (
                 <div key={c.id} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                    {/* Avatar */}
-                   {avatarUrl ? (
-                     <img src={avatarUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
-                   ) : (
-                     <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gold)', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
-                       {initials}
-                     </div>
-                   )}
-                   
+                   <Link to={`/user/${c.user_id}`} style={{ textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
+                     <Avatar user={author} size={32} />
+                   </Link>
+
                    {/* Content Bubble */}
                    <div style={{ flex: 1 }}>
                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                       <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                         {author?.full_name || author?.email?.split('@')[0] || 'Unknown User'}
-                       </span>
+                       <Link to={`/user/${c.user_id}`} style={{ textDecoration: 'none', color: 'var(--text-primary)' }} onClick={e => e.stopPropagation()}>
+                         <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                           {author?.full_name || author?.email?.split('@')[0] || 'Unknown User'}
+                         </span>
+                       </Link>
                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{timeAgo(c.created_at)}</span>
                      </div>
                      <div style={{ 

@@ -6,6 +6,7 @@ import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
 import Messages from './pages/Messages'
 import Profile from './pages/Profile'
+import UserProfile from './pages/UserProfile'
 import Login from './pages/Login'
 import CreateChallenge from './pages/CreateChallenge'
 import PlayChallenge from './pages/PlayChallenge'
@@ -85,6 +86,7 @@ export default function App() {
               <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
               <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/user/:id" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
               <Route path="/challenge/create/:matchId" element={<ProtectedRoute><CreateChallenge /></ProtectedRoute>} />
               <Route path="/challenge/:id" element={<ProtectedRoute><PlayChallenge /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />

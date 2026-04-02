@@ -1,0 +1,39 @@
+# Product Requirements Document: Live Incremental AI Umpire
+
+## 1. Goal
+To build a highly accurate, event-triggered AI Umpire that resolves user challenge questions incrementally as live match events happen (e.g., a player gets out, an innings ends, a team wins), and absolutely prohibiting any AI hallucinations or "guessing" of uncompleted events.
+
+## 2. Current Architecture Flaw (The Loophole)
+Currently, challenges are evaluated all at once. Because the cron job evaluates live matches simultaneously but the AI was prompted to evaluate everything at once, it resulted in hallucinated guesses. 
+- *Loophole 1*: Force-grading a match before it finishes results in hallucination.
+- *Loophole 2*: A single "resolved" state for the whole challenge means either all questions must wait for the match to end, or all questions are forced to artificially complete right now.
+
+## 3. New Proposed Architecture: Incremental Resolution
+Instead of grading the entire challenge when the match ends, the AI Umpire will evaluate **individual questions** continuously as live data streams in from the CricAPI via Redis cache.
+
+### 3.1 Data Flow Improvements
+1. **Creation**: When a user creates a challenge, questions are stored in the database with a new status flag: `status: 'pending'`.
+2. **Evaluation Cycle**: The Cron Job (e.g., every 2 minutes) queries all `pending` challenge questions across all active matches. 
+3. **Data Source**: The server fetches the latest live scorecard from the fast Redis cache.
+4. **Strict Gemini Prompting**: The scorecard + pending questions are sent to the `gemini-2.5-flash` model with highly restrictive instructions prohibiting guesses.
+
+### 3.2 Strict Prompt Rules (Anti-Hallucination)
+The Prompt to Gemini must enforce the following strict rules:
+*   **Rule 1 (Evidence-Based)**: If the event hasn't explicitly concluded in the scorecard data provided, you **MUST** return `index: null` and `status: "UNRESOLVED"`. 
+*   **Rule 2 (Out Checking)**: If the question is about a batsman's final score (e.g., "Virat's score > 50?"), you must check the `dismissal` or [out](file:///home/roman/.gemini/antigravity/scratch/predict/src/components/ProtectedRoute.jsx#4-24) field. If the player is still batting (`not out`), return `UNRESOLVED`. Only grade it if the player is explicitly OUT or the innings has officially closed.
+*   **Rule 3 (Match Results)**: If the question is about "Who will win?", check if `matchEnded` is true. If false, return `UNRESOLVED`.
+*   **Rule 4 (No Guesswork)**: Never project, estimate, or hallucinate future data.
+
+### 3.3 Backend Execution (Closing the Loophole)
+*   **JSON Response parsing**: Gemini returns an array of objects for each question: `{ answer_index: 0 | null, status: "RESOLVED" | "UNRESOLVED", result_text: "..." }`
+*   **Incremental DB Updates**: For any question marked `"RESOLVED"`, the backend updates that specific question's state in Supabase.
+*   **Triggering The Feed**: As soon as a single question flips to `"RESOLVED"`, the backend immediately grades the participants *for that specific question*, calculates updated pointing scores, and inserts a single `q_result` post into the `feed_posts` table.
+*   **Challenge Completion**: If all questions in a challenge are evaluated as `"RESOLVED"`, the challenge `is_resolved` flag flips to `true` and the final Leaderboard post is generated.
+
+## 4. Edge Cases & Loopholes Patched
+| Loophole | Solution |
+| :--- | :--- |
+| **Player Retires Hurt / Doesn't Bat** | The AI will check the DNB (Did Not Bat) array or "retired hurt" strings. If a player never bats and the innings ends, the score is 0. If they retire, it resolves when the innings ends. |
+| **Rain Delays / Abandoned Matches** | If CricAPI marks `status: "Abandoned"`, the AI resolves all pending questions as "Match Abandoned" and refunds/nullifies points. |
+| **API Delay / Rate Limits** | Redis caches the CricAPI response. If CricAPI is down, the Cron job will safely read the last known state from Redis and hold questions as `UNRESOLVED` until fresh data arrives. |
+| **AI Formatting Errors** | The Gemini call uses strict `responseMimeType: "application/json"`. In the event of an unpredictable structured output error, the Cron job completely skips the evaluation block and tries again next cycle safely. |

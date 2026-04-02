@@ -1,46 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabase'
-import {
-  getFriends,
-  getPendingRequests,
-  getSentRequests,
-  sendFriendRequest,
-  acceptFriendRequest,
-  removeFriendship,
-  searchUsers,
-  getFriendshipStatus,
-} from '../utils/friends'
+import { getFriendshipStatus, sendFriendRequest, acceptFriendRequest, removeFriendship, searchUsers, getFriends, getPendingRequests, getSentRequests } from '../utils/friends'
 import ChallengeCard from '../components/ChallengeCard'
 import FeedPost from '../components/FeedPost'
-
-function Avatar({ user, size = 40 }) {
-  const [imgError, setImgError] = useState(false)
-  const name = user?.full_name || user?.email || '?'
-  const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-  const avatarUrl = user?.avatar_url || user?.picture
-
-  if (avatarUrl && !imgError) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={name}
-        onError={() => setImgError(true)}
-        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover' }}
-      />
-    )
-  }
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: 'linear-gradient(135deg, var(--gold), var(--purple))',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontWeight: 700, fontSize: size * 0.35, color: '#fff',
-    }}>
-      {initials}
-    </div>
-  )
-}
+import Avatar from '../components/Avatar'
 
 export default function Profile() {
   const { user, signOut } = useAuth()
@@ -57,6 +22,7 @@ export default function Profile() {
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [searchStatuses, setSearchStatuses] = useState({})
+  const [stats, setStats] = useState({ pts: 0, percentage: 0, challenges: 0 })
 
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
@@ -84,10 +50,36 @@ export default function Profile() {
       // Load Activity Data (Participated)
       const { data: participatedData } = await supabase
         .from('challenge_responses')
-        .select('created_at, challenges(*)')
+        .select('created_at, score, answers, challenges(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(1000)
+
+      let totalPoints = 0;
+      let totalGradedPredictions = 0;
+      let correctPredictions = 0;
+      const totalChallenges = (participatedData || []).length;
+
+      (participatedData || []).forEach(response => {
+        totalPoints += (response.score || 0);
+        const challenge = response.challenges;
+        if (challenge && challenge.questions && response.answers) {
+          challenge.questions.forEach((q, idx) => {
+            if (q.answer !== -1 && q.answer !== null && q.answer !== undefined) {
+              totalGradedPredictions += 1;
+              if (response.answers[idx] === q.answer) {
+                correctPredictions += 1;
+              }
+            }
+          });
+        }
+      });
+
+      const predictionPercentage = totalGradedPredictions > 0
+        ? Math.round((correctPredictions / totalGradedPredictions) * 100)
+        : 0;
+
+      setStats({ pts: totalPoints, percentage: predictionPercentage, challenges: totalChallenges });
 
       const formattedParticipated = (participatedData || [])
         .filter(p => p.challenges && p.challenges.creator_id !== user.id) // deduplicate
@@ -190,7 +182,7 @@ export default function Profile() {
     padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', fontWeight: 600, fontSize: '0.85rem',
     cursor: 'pointer', background: friendsTab === name ? 'rgba(255,255,255,0.1)' : 'transparent',
     color: friendsTab === name ? 'var(--text-primary)' : 'var(--text-secondary)', border: 'none',
-    position: 'relative'
+    position: 'relative', flex: 1, textAlign: 'center'
   })
 
   return (
@@ -202,29 +194,44 @@ export default function Profile() {
             <Avatar user={{ ...(user?.user_metadata || {}), email: user?.email }} size={96} />
           </div>
           <h2 style={{ color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '1.5rem', fontWeight: 700 }}>{displayName}</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>{user?.email}</p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '3rem', margin: '1.5rem 0' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{user?.email}</p>
+
+          {/* Stats Bar */}
+          <div style={{
+            display: 'flex',
+            gap: '1.5rem',
+            background: 'var(--bg-secondary)',
+            padding: '1rem 1.5rem',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-glass)',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+          }}>
             <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>{(activity || []).length}</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Posts</p>
+              <div style={{ color: 'var(--gold)', fontSize: '1.25rem', fontWeight: 800 }}>{stats.percentage}%</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Prediction</div>
             </div>
+            <div style={{ width: '1px', background: 'var(--border-glass)' }}></div>
             <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 700, lineHeight: 1 }}>{(friends || []).length}</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>Friends</p>
+              <div style={{ color: 'var(--text-primary)', fontSize: '1.25rem', fontWeight: 800 }}>{stats.pts}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pts</div>
+            </div>
+            <div style={{ width: '1px', background: 'var(--border-glass)' }}></div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: '1.25rem', fontWeight: 800 }}>{stats.challenges}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Challenges</div>
             </div>
           </div>
-          <button onClick={signOut} className="btn btn-secondary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: '40px', background: 'rgba(239,68,68,0.1)', color: '#fc8181', borderColor: 'rgba(239,68,68,0.3)' }}>
-            Sign Out
-          </button>
         </div>
       </div>
 
       <div className="container" style={{ maxWidth: '800px', padding: 0 }}>
         {/* Main Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)', background: 'var(--bg-secondary)', position: 'sticky', top: 64, zIndex: 10 }}>
-          <button style={mainTabStyle('activity')} onClick={() => setMainTab('activity')}>Activity</button>
+          <button style={mainTabStyle('activity')} onClick={() => setMainTab('activity')}>
+            Activity
+          </button>
           <button style={mainTabStyle('friends')} onClick={() => setMainTab('friends')}>
-            Friends {totalNotifications > 0 && <span style={{color: '#f44336'}}>({totalNotifications})</span>}
+            Friends <span style={{ color: mainTab === 'friends' ? 'var(--text-primary)' : 'var(--text-muted)', marginLeft: '0.25rem', fontWeight: 400, opacity: mainTab === 'friends' ? 1 : 0.6 }}>{(friends || []).length}</span> {totalNotifications > 0 && <span style={{color: '#f44336', marginLeft: '0.25rem'}}>({totalNotifications})</span>}
           </button>
         </div>
 
@@ -253,7 +260,7 @@ export default function Profile() {
           ) : (
              <div>
                 {/* Friends Sub-Tabs */}
-                <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.25rem', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '0.25rem', marginBottom: '1.5rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.25rem', maxWidth: '600px', margin: '0 auto 1.5rem' }}>
                   <button style={subTabStyle('list')} onClick={() => setFriendsTab('list')}>My Friends</button>
                   <button style={subTabStyle('requests')} onClick={() => setFriendsTab('requests')}>
                     Requests {totalNotifications > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: '#f44336', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{totalNotifications}</span>}
@@ -263,7 +270,7 @@ export default function Profile() {
 
                 {/* Sub Tab Content */}
                 {friendsTab === 'list' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
                     {friends.length === 0 ? (
                       <div className="empty-state" style={{ padding: '2rem 1rem', border: 'none', background: 'transparent' }}>
                         <div className="empty-icon" style={{ fontSize: '2rem' }}>—</div>
@@ -273,12 +280,14 @@ export default function Profile() {
                       </div>
                     ) : (
                       friends.map(({ friendshipId, friend, since }) => (
-                        <div key={friendshipId} className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <Avatar user={friend} size={44} />
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{friend?.full_name || friend?.email}</p>
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Friends since {new Date(since).toLocaleDateString()}</p>
-                          </div>
+                        <div key={friendshipId} className="glass-card" style={{ width: '100%', maxWidth: '600px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <Link to={`/user/${friend.id}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, textDecoration: 'none' }}>
+                            <Avatar user={friend} size={44} />
+                            <div>
+                              <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{friend?.full_name || friend?.email}</p>
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Friends since {new Date(since).toLocaleDateString()}</p>
+                            </div>
+                          </Link>
                           <button onClick={() => handleRemove(friendshipId)} disabled={actionLoading === friendshipId} style={{ background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer' }}>Remove</button>
                         </div>
                       ))
@@ -289,16 +298,18 @@ export default function Profile() {
                 {friendsTab === 'requests' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     <div>
-                      <h3 style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Incoming</h3>
-                      {pendingRequests.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No incoming requests</p> : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <h3 style={{ textAlign: 'center', marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Incoming</h3>
+                      {pendingRequests.length === 0 ? <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No incoming requests</p> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
                           {pendingRequests.map(req => (
-                            <div key={req.id} className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                              <Avatar user={req.requester} size={44} />
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{req.requester?.full_name || req.requester?.email}</p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Wants to be your friend</p>
-                              </div>
+                            <div key={req.id} className="glass-card" style={{ width: '100%', maxWidth: '600px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              <Link to={`/user/${req.requester?.id}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, textDecoration: 'none' }}>
+                                <Avatar user={req.requester} size={44} />
+                                <div>
+                                  <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{req.requester?.full_name || req.requester?.email}</p>
+                                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Wants to be your friend</p>
+                                </div>
+                              </Link>
                               <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button onClick={() => handleAccept(req.id)} disabled={actionLoading === req.id} className="btn btn-primary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}>Accept</button>
                                 <button onClick={() => handleRemove(req.id)} disabled={actionLoading === req.id} className="btn btn-secondary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}>Decline</button>
@@ -309,16 +320,18 @@ export default function Profile() {
                       )}
                     </div>
                     <div>
-                      <h3 style={{ marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sent</h3>
-                      {sentRequests.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No pending sent requests</p> : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <h3 style={{ textAlign: 'center', marginBottom: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sent</h3>
+                      {sentRequests.length === 0 ? <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No pending sent requests</p> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
                           {sentRequests.map(req => (
-                            <div key={req.id} className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                              <Avatar user={req.receiver} size={44} />
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{req.receiver?.full_name || req.receiver?.email}</p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Request pending...</p>
-                              </div>
+                            <div key={req.id} className="glass-card" style={{ width: '100%', maxWidth: '600px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              <Link to={`/user/${req.receiver?.id}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, textDecoration: 'none' }}>
+                                <Avatar user={req.receiver} size={44} />
+                                <div>
+                                  <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{req.receiver?.full_name || req.receiver?.email}</p>
+                                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Request pending...</p>
+                                </div>
+                              </Link>
                               <button onClick={() => handleRemove(req.id)} disabled={actionLoading === req.id} style={{ background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer' }}>Cancel</button>
                             </div>
                           ))}
@@ -330,22 +343,26 @@ export default function Profile() {
 
                 {friendsTab === 'search' && (
                   <div>
-                    <input className="form-input" placeholder="Search by name or email..." value={searchQuery} onChange={e => handleSearch(e.target.value)} style={{ marginBottom: '1rem' }} autoFocus />
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+                      <input className="form-input" placeholder="Search by name or email..." value={searchQuery} onChange={e => handleSearch(e.target.value)} style={{ width: '100%', maxWidth: '600px' }} autoFocus />
+                    </div>
                     {searching ? (
                       <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}><span className="spinner" style={{ width: 24, height: 24 }} /></div>
                     ) : searchResults.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
                         {searchResults.map(result => {
                           const friendship = searchStatuses[result.id]
                           const isFriend = friendship?.status === 'accepted'
                           const isPending = friendship?.status === 'pending'
                           return (
-                            <div key={result.id} className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                              <Avatar user={result} size={44} />
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{result.full_name || result.email}</p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{result.email}</p>
-                              </div>
+                            <div key={result.id} className="glass-card" style={{ width: '100%', maxWidth: '600px', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                              <Link to={`/user/${result.id}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, textDecoration: 'none' }}>
+                                <Avatar user={result} size={44} />
+                                <div>
+                                  <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{result.full_name || result.email}</p>
+                                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{result.email}</p>
+                                </div>
+                              </Link>
                               {isFriend ? <span style={{ fontSize: '0.8rem', color: '#4caf50', fontWeight: 600 }}>✓ Friends</span> : isPending ? <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Sent ✓</span> : <button onClick={() => handleSendRequest(result.id)} disabled={actionLoading === result.id} className="btn btn-primary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}>{actionLoading === result.id ? '...' : '+ Add'}</button>}
                             </div>
                           )

@@ -118,6 +118,7 @@ cron.schedule('*/30 * * * *', fetchAndCacheMatches);
 
 // Run immediately on boot to populate cache
 fetchAndCacheMatches();
+console.log('✅ Match fetching from CricAPI is ENABLED');
 
 // --- 2. API ROUTE: GET LIVE MATCHES ---
 app.get('/api/matches', async (req, res) => {
@@ -166,20 +167,31 @@ async function runAIUmpire() {
       .select('*')
       .eq('is_resolved', false);
 
-    if (fetchErr || !challenges || challenges.length === 0) {
+    if (fetchErr) {
+      console.error('❌ Error fetching challenges:', fetchErr);
       return;
     }
+
+    if (!challenges || challenges.length === 0) {
+      console.log('📭 No unresolved challenges found');
+      return;
+    }
+
+    console.log(`🔍 Found ${challenges.length} unresolved challenge(s) to evaluate`);
 
     for (const challenge of challenges) {
       console.log(`🏏 Live Match ${challenge.match_name} detected! Evaluating pending questions for Challenge ${challenge.id}...`);
 
       // Fetch Live Scorecard (from Redis or API)
+      console.log(`📊 Checking scorecard for match ${challenge.match_id}...`);
       const scoreData = await getMatchScorecard(challenge.match_id);
-      
+
       if (!scoreData) {
         console.log(`⚠️ No live scorecard available for match ${challenge.match_id}, skipping.`);
+        console.log(`   (Scorecard may need to be fetched from CricAPI first)`);
         continue;
       }
+      console.log(`✅ Found scorecard for match ${challenge.match_id}`);
 
       // 3. Strict Prompting to Gemini 2.5 Flash
       const model = genAI.getGenerativeModel({
@@ -188,12 +200,14 @@ async function runAIUmpire() {
       });
 
       // Filter only questions that haven't been resolved yet (answer === -1)
+      console.log(`📝 Challenge has ${challenge.questions?.length || 0} total questions`);
       const questionsToGrade = challenge.questions.map((q, i) => ({ ...q, originalIndex: i }))
                                                   .filter(q => q.answer === -1);
+      console.log(`📝 ${questionsToGrade.length} question(s) pending evaluation`);
 
       if (questionsToGrade.length === 0) {
-         // Should realistically never happen since is_resolved=false
-         continue; 
+         console.log(`⏭️ No pending questions for challenge ${challenge.id}, skipping.`);
+         continue;
       }
 
       const prompt = `
@@ -221,12 +235,15 @@ Format your exact JSON response as an array of objects corresponding to the ques
 ]
       `;
 
+      console.log(`🤖 Sending ${questionsToGrade.length} questions to Gemini for evaluation...`);
       const result = await model.generateContent(prompt);
       let geminiResults = [];
       try {
          geminiResults = JSON.parse(result.response.text());
+         console.log(`🤖 Gemini returned ${geminiResults.length} results:`, JSON.stringify(geminiResults, null, 2));
       } catch (e) {
-         console.error("Failed to parse Gemini JSON:", e);
+         console.error("❌ Failed to parse Gemini JSON:", e);
+         console.error("Raw response:", result.response.text());
          continue;
       }
 
@@ -298,13 +315,21 @@ Format your exact JSON response as an array of objects corresponding to the ques
             parts: participants
          };
 
-         await supabase.from('feed_posts').insert({
+         console.log(`📝 Creating feed post for question: "${q.question.substring(0, 50)}..."`);
+
+         const { data: postResult, error: postError } = await supabase.from('feed_posts').insert({
            challenge_id: challenge.id,
            creator_id: challenge.creator_id,
            match_id: challenge.match_id,
            match_name: challenge.match_name,
            content: JSON.stringify(postData)
-         });
+         }).select();
+
+         if (postError) {
+           console.error(`❌ Failed to insert feed post for challenge ${challenge.id}:`, postError);
+         } else {
+           console.log(`✅ Posted result to feed for challenge ${challenge.id}, question ${origIndex}`);
+         }
       }
 
       // Check if ALL questions across the challenge are now fully resolved
@@ -344,13 +369,21 @@ Format your exact JSON response as an array of objects corresponding to the ques
             parts: leaderboardParticipants
          };
 
-         await supabase.from('feed_posts').insert({
+         console.log(`🏆 Creating leaderboard post for challenge ${challenge.id}`);
+
+         const { error: lbError } = await supabase.from('feed_posts').insert({
             challenge_id: challenge.id,
             creator_id: challenge.creator_id,
             match_id: challenge.match_id,
             match_name: challenge.match_name,
             content: JSON.stringify(leaderboardData)
          });
+
+         if (lbError) {
+            console.error(`❌ Failed to insert leaderboard for challenge ${challenge.id}:`, lbError);
+         } else {
+            console.log(`✅ Posted leaderboard for challenge ${challenge.id}`);
+         }
       }
 
       // 6. Save the partial or fully updated state to Supabase
@@ -371,6 +404,7 @@ cron.schedule('*/2 * * * *', runAIUmpire);
 
 // Run immediately on boot
 runAIUmpire();
+console.log('✅ AI Umpire cron job is ENABLED');
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);

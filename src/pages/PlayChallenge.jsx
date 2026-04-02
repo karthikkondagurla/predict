@@ -218,7 +218,8 @@ export default function PlayChallenge() {
                     {q.options.map((opt, oi) => {
                       const isSelected = answers[qi] === oi
                       const isCorrect = q.answer === oi
-                      const showResult = submitted || isCreator
+                      const hasOfficialAnswer = q.answer !== -1
+                      const showResult = (submitted || isCreator) && hasOfficialAnswer
 
                       let borderColor = 'var(--border-glass)'
                       let bgColor = 'transparent'

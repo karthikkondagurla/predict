@@ -21,6 +21,12 @@ export async function createChallenge({ matchId, matchName, matchDate, questions
 
   const shortId = generateShortId()
 
+  // 1. Extract creator's predictions
+  const creatorAnswers = questions.map(q => q.answer)
+
+  // 2. Reset the official challenge questions to be unresolved (-1)
+  const dbQuestions = questions.map(q => ({ ...q, answer: -1 }))
+
   const { data, error } = await supabase
     .from('challenges')
     .insert({
@@ -28,13 +34,26 @@ export async function createChallenge({ matchId, matchName, matchDate, questions
       match_id: matchId,
       match_name: matchName,
       match_date: matchDate,
-      questions: questions, // [{question, options[], answer}]
+      questions: dbQuestions, // [{question, options[], answer: -1}]
       short_id: shortId,
     })
     .select()
     .single()
 
   if (error) throw error
+
+  // 3. Automatically submit the creator's response so they participate
+  const { error: responseError } = await supabase
+    .from('challenge_responses')
+    .insert({
+      challenge_id: data.id,
+      user_id: user.id,
+      answers: creatorAnswers,
+      score: 0,
+    })
+
+  if (responseError) throw responseError
+
   return data
 }
 

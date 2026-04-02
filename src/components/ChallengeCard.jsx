@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { submitChallengeResponse, getChallengeResponses } from '../utils/challenges'
 import { supabase } from '../supabase'
 import CommentsSection from './CommentsSection'
 import ConfirmLockModal from './ConfirmLockModal'
+import Avatar from './Avatar'
 
 export default function ChallengeCard({ challenge }) {
   const navigate = useNavigate()
@@ -174,42 +175,34 @@ export default function ChallengeCard({ challenge }) {
         {/* Creator info */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           {creatorProfile ? (
-            creatorProfile.avatar_url ? (
-              <img
-                src={creatorProfile.avatar_url}
-                alt={creatorProfile.full_name || 'Creator'}
-                style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border-glass)' }}
-              />
-            ) : (
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: '0.8rem', color: '#fff',
-                border: '2px solid var(--border-glass)',
-              }}>
-                {(creatorProfile.full_name || creatorProfile.email || '?').charAt(0).toUpperCase()}
+            <Link to={`/user/${creatorProfile.id}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.6rem' }} onClick={e => e.stopPropagation()}>
+              <Avatar user={creatorProfile} size={36} style={{ border: '2px solid var(--border-glass)' }} />
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                    {creatorProfile?.full_name || creatorProfile?.email?.split('@')[0] || '...'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '1px' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{createdAt}</span>
+                  <span style={{
+                    fontSize: '0.65rem', fontWeight: 700, color: 'var(--gold)',
+                    background: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)',
+                    padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace',
+                  }}>#{shortId}</span>
+                </div>
               </div>
-            )
+            </Link>
           ) : (
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-secondary)' }} />
+            <>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-secondary)' }} />
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>...</span>
+                </div>
+              </div>
+            </>
           )}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                {creatorProfile?.full_name || creatorProfile?.email?.split('@')[0] || '...'}
-              </span>
-
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '1px' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{createdAt}</span>
-              <span style={{
-                fontSize: '0.65rem', fontWeight: 700, color: 'var(--gold)',
-                background: 'rgba(255, 152, 0, 0.1)', border: '1px solid rgba(255, 152, 0, 0.3)',
-                padding: '1px 4px', borderRadius: '3px', fontFamily: 'monospace',
-              }}>#{shortId}</span>
-            </div>
-          </div>
         </div>
         {/* Q counter */}
         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
@@ -321,19 +314,26 @@ export default function ChallengeCard({ challenge }) {
         borderTop: '1px solid var(--border-glass)',
       }}>
         {/* Avatar stack */}
-        <div style={{ display: 'flex' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           {participants.slice(0, 5).map((p, i) => (
-              <img
+              <Link
+                to={`/user/${p.id}`}
                 key={p.id}
-                src={p.avatar}
-                alt={p.name}
+                onClick={e => e.stopPropagation()}
                 title={p.name}
                 style={{
-                  width: 26, height: 26, borderRadius: '50%', objectFit: 'cover',
-                  border: '2px solid var(--bg-primary)',
+                  display: 'block',
                   marginLeft: i > 0 ? '-8px' : 0,
+                  borderRadius: '50%',
+                  zIndex: 5 - i,
+                  position: 'relative',
+                  flexShrink: 0,
+                  width: 26,
+                  height: 26
                 }}
-              />
+              >
+                <Avatar user={p} size={26} style={{ border: '2px solid var(--bg-primary)', display: 'block' }} />
+              </Link>
             ))}
             {participants.length > 5 && (
               <div style={{

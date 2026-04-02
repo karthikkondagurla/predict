@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import CommentsSection from './CommentsSection'
+import Avatar from './Avatar'
 
 export default function FeedPost({ post }) {
   const [showComments, setShowComments] = useState(false)
@@ -110,13 +112,15 @@ export default function FeedPost({ post }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <span style={{ fontSize: '0.9rem', width: '20px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>#{p.rank}</span>
                             {p.medal && p.medal !== '🏅' && p.medal !== '💔' && <span style={{ fontSize: '1.25rem' }}>{p.medal}</span>}
-                            <img src={p.img} alt={p.n} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                               <span style={{ color: isMe ? 'var(--gold)' : 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>{p.n}</span>
-                               <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                 {right}/{total} Correct ({pct}%)
-                               </span>
-                            </div>
+                            <Link to={`/user/${p.id}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.75rem' }} onClick={e => e.stopPropagation()}>
+                              <Avatar user={p} size={32} />
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                 <span style={{ color: isMe ? 'var(--gold)' : 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>{p.n}</span>
+                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                   {right}/{total} Correct ({pct}%)
+                                 </span>
+                              </div>
+                            </Link>
                           </div>
                           <span style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: '1rem' }}>
                             {p.score} pts
@@ -159,13 +163,15 @@ export default function FeedPost({ post }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                               <span style={{ fontSize: '1rem', width: '24px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>#{rank}</span>
                               {p.medal && p.medal !== '🏅' && p.medal !== '💔' && <span style={{ fontSize: '1.25rem' }}>{p.medal}</span>}
-                              <img src={p.img} alt={p.n} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                 <span style={{ color: isMe ? 'var(--gold)' : 'var(--text-primary)', fontSize: '1rem', fontWeight: 600 }}>{p.n}</span>
-                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                                   {right}/{total} Correct ({pct}%)
-                                 </span>
-                              </div>
+                              <Link to={`/user/${p.id}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.75rem' }} onClick={e => e.stopPropagation()}>
+                                <Avatar user={p} size={36} />
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                   <span style={{ color: isMe ? 'var(--gold)' : 'var(--text-primary)', fontSize: '1rem', fontWeight: 600 }}>{p.n}</span>
+                                   <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                     {right}/{total} Correct ({pct}%)
+                                   </span>
+                                </div>
+                              </Link>
                             </div>
                             <span style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: '1.1rem' }}>
                               {p.score}
@@ -192,11 +198,13 @@ export default function FeedPost({ post }) {
              {[...qData.parts].sort((a, b) => b.ok - a.ok).map((p, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.75rem', borderRadius: '6px', background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border-glass)' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                     <img src={p.img} alt={p.n} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
-                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>{p.n}</span>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{p.ans}</span>
-                     </div>
+                     <Link to={`/user/${p.id}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.75rem' }} onClick={e => e.stopPropagation()}>
+                       <Avatar user={p} size={28} />
+                       <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>{p.n}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{p.ans}</span>
+                       </div>
+                     </Link>
                    </div>
                    <span style={{ color: p.ok ? 'var(--green)' : 'var(--red)', fontWeight: 'bold', fontSize: '0.95rem' }}>
                      {p.pts}
