@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Redis from 'ioredis';
-import cron from 'node-cron';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 
@@ -211,37 +210,41 @@ async function refreshScorecards() {
   await redis.set('live_matches', JSON.stringify(matches), 'EX', 86400);
 }
 
-// --- DAILY SERIES INFO FETCH (midnight IST = 18:30 UTC) ---
-cron.schedule('30 18 * * *', async () => {
-  // Reset API key rotation indices for the new day
+// --- CRON JOB ROUTES (Triggered by Vercel Cron) ---
+// Secure endpoints with CRON_SECRET check
+const checkCronAuth = (req, res, next) => {
+  if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    console.warn('Unauthorized cron attempt');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+};
+
+app.get('/api/cron/series', checkCronAuth, async (req, res) => {
+  console.log('🔄 Cron Trigger: Series Info (Daily Reset)');
   currentCricApiIndex = 0;
   currentGeminiIndex = 0;
-  console.log('🔄 Reset API key rotation indices for the new day');
-
   await fetchAndCacheSeriesInfo();
-}, { timezone: 'UTC' });
-console.log('✅ Series info scheduled daily at midnight IST (18:30 UTC)');
-
-// --- MASTER SCHEDULER (runs every minute during match window) ---
-cron.schedule('* * * * *', async () => {
-  if (!isInMatchWindow()) return;
-
-  const now = Date.now();
-
-  // Refresh scorecards every 5 min
-  if (now - lastScorecardsRefresh >= SCORECARD_INTERVAL_MS) {
-    lastScorecardsRefresh = now;
-    await refreshScorecards();
-  }
-
-  // Run AI umpire every 2 min
-  if (now - lastAIUmpire >= AI_UMPIRE_INTERVAL_MS) {
-    lastAIUmpire = now;
-    await runAIUmpire();
-  }
+  res.status(200).send('Series info cached and indices reset');
 });
 
-console.log('✅ Match window scheduler is ENABLED (evening: 7:00 PM – 11:30 PM IST)');
+app.get('/api/cron/scorecards', checkCronAuth, async (req, res) => {
+  console.log('🔄 Cron Trigger: Scorecards');
+  if (!isInMatchWindow()) {
+    return res.status(200).send('Outside match window, skipping.');
+  }
+  await refreshScorecards();
+  res.status(200).send('Scorecards refreshed');
+});
+
+app.get('/api/cron/umpire', checkCronAuth, async (req, res) => {
+  console.log('🔄 Cron Trigger: AI Umpire');
+  if (!isInMatchWindow()) {
+    return res.status(200).send('Outside match window, skipping.');
+  }
+  await runAIUmpire();
+  res.status(200).send('AI Umpire evaluation complete');
+});
 
 // --- 2. API ROUTE: GET LIVE MATCHES ---
 app.get('/api/matches', async (req, res) => {
@@ -518,8 +521,5 @@ Format your exact JSON response as an array of objects corresponding to the ques
   }
 }
 
-// (AI Umpire is triggered by the master scheduler above)
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+// Export the express app for Vercel Serverless
+export default app;

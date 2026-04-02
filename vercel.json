@@ -2,11 +2,25 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/api/index.js"
     },
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/series",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/scorecards",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/umpire",
+      "schedule": "*/2 * * * *"
     }
   ]
 }
