@@ -119,21 +119,38 @@ redis.on('error', (err) => {
 const BASE_URL = 'https://api.cricapi.com/v1';
 const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 
-// --- MATCH WINDOW CONFIG (IST = UTC+5:30) ---
-// Evening match: toss at 7:00 PM IST, ends ~11:30 PM IST
-const EVENING_WINDOW = { startHour: 19, startMin: 0, endHour: 23, endMin: 30 };
-
-function isInMatchWindow() {
+// --- MATCH LOGIC (Dynamic Polling) ---
+function todayISTString() {
   const now = new Date();
-  // Convert to IST (UTC+5:30)
   const istOffsetMs = 5.5 * 60 * 60 * 1000;
   const ist = new Date(now.getTime() + istOffsetMs);
-  const h = ist.getUTCHours();
-  const m = ist.getUTCMinutes();
-  const totalMin = h * 60 + m;
-  const windowStart = EVENING_WINDOW.startHour * 60 + EVENING_WINDOW.startMin;
-  const windowEnd   = EVENING_WINDOW.endHour   * 60 + EVENING_WINDOW.endMin;
-  return totalMin >= windowStart && totalMin <= windowEnd;
+  return ist.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+}
+
+async function hasActiveMatch() {
+  const cached = await redis.get('live_matches');
+  if (!cached) return false;
+  const matches = JSON.parse(cached);
+
+  const now = Date.now();
+  return matches.some(m => {
+    // If match has explicitly ended, it's no longer active
+    if (m.matchEnded) return false;
+
+    // If API says it started, it's definitely active
+    if (m.matchStarted) return true;
+
+    // If not explicitly marked started yet, check if we are past the start time
+    // Or within 15 mins of it (so we catch the toss and exact start)
+    if (m.dateTimeGMT) {
+      // Append 'Z' to treat as UTC correctly if it's missing
+      const timeStr = m.dateTimeGMT.endsWith('Z') ? m.dateTimeGMT : m.dateTimeGMT + 'Z';
+      const startTime = new Date(timeStr).getTime();
+      if (now >= (startTime - 15 * 60 * 1000)) return true;
+    }
+
+    return false;
+  });
 }
 
 // Timestamps to enforce intervals within the window
@@ -164,8 +181,6 @@ async function fetchAndCacheSeriesInfo() {
     } else {
       console.log('⚠️ No matches scheduled for today.');
     }
-
-    seriesInfoFetchedDate = todayStr;
   } catch (error) {
     console.error('❌ Error fetching series info:', error);
   }
@@ -230,8 +245,9 @@ app.get('/api/cron/series', checkCronAuth, async (req, res) => {
 
 app.get('/api/cron/scorecards', checkCronAuth, async (req, res) => {
   console.log('🔄 Cron Trigger: Scorecards');
-  if (!isInMatchWindow()) {
-    return res.status(200).send('Outside match window, skipping.');
+  const isActive = await hasActiveMatch();
+  if (!isActive) {
+    return res.status(200).send('No active matches right now, skipping API call.');
   }
   await refreshScorecards();
   res.status(200).send('Scorecards refreshed');
@@ -239,8 +255,9 @@ app.get('/api/cron/scorecards', checkCronAuth, async (req, res) => {
 
 app.get('/api/cron/umpire', checkCronAuth, async (req, res) => {
   console.log('🔄 Cron Trigger: AI Umpire');
-  if (!isInMatchWindow()) {
-    return res.status(200).send('Outside match window, skipping.');
+  const isActive = await hasActiveMatch();
+  if (!isActive) {
+    return res.status(200).send('No active matches right now, skipping AI Umpire.');
   }
   await runAIUmpire();
   res.status(200).send('AI Umpire evaluation complete');
