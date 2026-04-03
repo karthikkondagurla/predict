@@ -1,128 +1,33 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useData } from '../contexts/DataContext'
 import { supabase } from '../supabase'
-import { getFriendshipStatus, sendFriendRequest, acceptFriendRequest, removeFriendship, searchUsers, getFriends, getPendingRequests, getSentRequests } from '../utils/friends'
+import { getFriendshipStatus, sendFriendRequest, acceptFriendRequest, removeFriendship, searchUsers } from '../utils/friends'
 import ChallengeCard from '../components/ChallengeCard'
 import FeedPost from '../components/FeedPost'
 import Avatar from '../components/Avatar'
 
 export default function Profile() {
   const { user, signOut } = useAuth()
-  const [mainTab, setMainTab] = useState('activity') // 'activity' | 'friends'
-  const [friendsTab, setFriendsTab] = useState('list') // 'list' | 'requests' | 'search'
-  
-  // Data States
-  const [activity, setActivity] = useState([])
-  const [friends, setFriends] = useState([])
-  const [pendingRequests, setPendingRequests] = useState([])
-  const [sentRequests, setSentRequests] = useState([])
-  
+  const {
+    activity, friends, pendingRequests, sentRequests, stats,
+    profileLoading, loadProfile,
+    setFriends, setPendingRequests, setSentRequests,
+  } = useData()
+
+  const [mainTab, setMainTab] = useState('activity')
+  const [friendsTab, setFriendsTab] = useState('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [searchStatuses, setSearchStatuses] = useState({})
-  const [stats, setStats] = useState({ pts: 0, percentage: 0, challenges: 0 })
-
-  const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
   const [error, setError] = useState(null)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    try {
-      // Load Friends data
-      const [f, p, s] = await Promise.all([getFriends(), getPendingRequests(), getSentRequests()])
-      setFriends(f || [])
-      setPendingRequests(p || [])
-      setSentRequests(s || [])
-
-      // Load Activity Data (Created)
-      const { data: challengesData } = await supabase
-        .from('challenges')
-        .select('*')
-        .eq('creator_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      const formattedChallenges = (challengesData || []).map(c => ({ type: 'challenge', data: c, date: new Date(c.created_at) }))
-
-      // Load Activity Data (Participated)
-      const { data: participatedData } = await supabase
-        .from('challenge_responses')
-        .select('created_at, score, answers, challenges(*)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1000)
-
-      let totalPoints = 0;
-      let totalGradedPredictions = 0;
-      let correctPredictions = 0;
-      const totalChallenges = (participatedData || []).length;
-
-      (participatedData || []).forEach(response => {
-        totalPoints += (response.score || 0);
-        const challenge = response.challenges;
-        if (challenge && challenge.questions && response.answers) {
-          challenge.questions.forEach((q, idx) => {
-            if (q.answer !== -1 && q.answer !== null && q.answer !== undefined) {
-              totalGradedPredictions += 1;
-              if (response.answers[idx] === q.answer) {
-                correctPredictions += 1;
-              }
-            }
-          });
-        }
-      });
-
-      const predictionPercentage = totalGradedPredictions > 0
-        ? Math.round((correctPredictions / totalGradedPredictions) * 100)
-        : 0;
-
-      setStats({ pts: totalPoints, percentage: predictionPercentage, challenges: totalChallenges });
-
-      const formattedParticipated = (participatedData || [])
-        .filter(p => p.challenges && p.challenges.creator_id !== user.id) // deduplicate
-        .map(p => ({ type: 'challenge', data: p.challenges, date: new Date(p.created_at) }))
-
-      // Collect all challenge IDs the user is involved in (created + participated)
-      const createdChallengeIds = (challengesData || []).map(c => c.id)
-      const participatedChallengeIds = formattedParticipated.map(p => p.data.id)
-      const allChallengeIds = [...new Set([...createdChallengeIds, ...participatedChallengeIds])]
-
-      // Fetch all AI Umpire posts for any challenge the user is involved in
-      let allPostsData = []
-      if (allChallengeIds.length > 0) {
-        const { data: pPostsData } = await supabase
-          .from('feed_posts')
-          .select('*')
-          .in('challenge_id', allChallengeIds)
-          .order('created_at', { ascending: false })
-          .limit(100)
-        allPostsData = pPostsData || []
-      }
-
-      // Deduplicate posts
-
-      const uniquePostsMap = {}
-      allPostsData.forEach(p => uniquePostsMap[p.id] = p)
-      const uniquePosts = Object.values(uniquePostsMap)
-
-      const formattedPosts = uniquePosts.map(p => ({ type: 'post', data: p, date: new Date(p.created_at) }))
-
-      const combined = [...formattedChallenges, ...formattedParticipated, ...formattedPosts].sort((a, b) => b.date - a.date)
-      setActivity(combined)
-    } catch (err) {
-      setError(err.message)
-      console.error('Failed to load profile data:', err)
-    } finally {
-      setLoading(false)
-    }
+  useEffect(() => {
+    if (user?.id) loadProfile()
   }, [user?.id])
-
-  useEffect(() => { 
-    if (user?.id) loadData() 
-  }, [loadData, user?.id])
 
   // Friend Actions
   const handleSearch = async (q) => {
@@ -150,19 +55,19 @@ export default function Profile() {
       await sendFriendRequest(receiverId)
       const status = await getFriendshipStatus(receiverId)
       setSearchStatuses(p => ({ ...p, [receiverId]: status }))
-      await loadData()
+      await loadProfile({ force: true })
     } catch (err) { setError(err.message) } finally { setActionLoading(null) }
   }
 
   const handleAccept = async (friendshipId) => {
     setActionLoading(friendshipId)
-    try { await acceptFriendRequest(friendshipId); await loadData() }
+    try { await acceptFriendRequest(friendshipId); await loadProfile({ force: true }) }
     catch (err) { setError(err.message) } finally { setActionLoading(null) }
   }
 
   const handleRemove = async (friendshipId) => {
     setActionLoading(friendshipId)
-    try { await removeFriendship(friendshipId); await loadData() }
+    try { await removeFriendship(friendshipId); await loadProfile({ force: true }) }
     catch (err) { setError(err.message) } finally { setActionLoading(null) }
   }
 
@@ -237,7 +142,7 @@ export default function Profile() {
 
         {/* Content */}
         <div style={{ padding: '1.5rem 1rem 3rem' }}>
-          {loading ? (
+          {profileLoading && activity.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" style={{ width: 32, height: 32 }} /></div>
           ) : error && mainTab === 'friends' ? ( // only show errors in friends tab ideally, or at top
             <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '1rem', color: '#fc8181', fontSize: '0.85rem' }}>{error}</div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { DataProvider } from './contexts/DataContext'
 import Navbar from './components/Navbar'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
@@ -79,20 +80,22 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <Navbar />
-          <main>
-            <Routes>
-              <Route path="/" element={<Login />} />
-              <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-              <Route path="/user/:id" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-              <Route path="/challenge/create/:matchId" element={<ProtectedRoute><CreateChallenge /></ProtectedRoute>} />
-              <Route path="/challenge/:id" element={<ProtectedRoute><PlayChallenge /></ProtectedRoute>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-          <BottomNav />
+          <DataProvider>
+            <Navbar />
+            <main>
+              <Routes>
+                <Route path="/" element={<Login />} />
+                <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                <Route path="/user/:id" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
+                <Route path="/challenge/create/:matchId" element={<ProtectedRoute><CreateChallenge /></ProtectedRoute>} />
+                <Route path="/challenge/:id" element={<ProtectedRoute><PlayChallenge /></ProtectedRoute>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </main>
+            <BottomNav />
+          </DataProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>
