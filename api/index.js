@@ -288,13 +288,30 @@ app.get('/api/matches', async (req, res) => {
 
 // --- 3. HELPER: FETCH SCORECARD ---
 async function getMatchScorecard(matchId) {
-  // 1. Check Redis only
+  // 1. Check Redis first
   const cachedScorecard = await redis.get(`scorecard:${matchId}`);
   if (cachedScorecard) {
     return JSON.parse(cachedScorecard);
   }
 
-  console.log(`⚠️ No scorecard found in Redis for ${matchId}. Waiting for cron job to populate cache.`);
+  // 2. Fallback: fetch directly from CricAPI and cache it
+  if (cricApiKeys.length === 0) {
+    console.log(`⚠️ No scorecard in Redis for ${matchId} and no CricAPI keys configured.`);
+    return null;
+  }
+
+  console.log(`📡 Scorecard not in Redis for ${matchId}, fetching from CricAPI...`);
+  try {
+    const scoreData = await fetchWithCricApiRotation((key) => `${BASE_URL}/match_scorecard?apikey=${key}&id=${matchId}`);
+    if (scoreData.status === 'success' && scoreData.data) {
+      await redis.set(`scorecard:${matchId}`, JSON.stringify(scoreData.data), 'EX', 600);
+      console.log(`💾 Fetched and cached scorecard for ${matchId}`);
+      return scoreData.data;
+    }
+    console.log(`⚠️ CricAPI returned no scorecard for ${matchId}: ${scoreData.reason || 'unknown'}`);
+  } catch (e) {
+    console.error(`❌ Failed to fetch scorecard for ${matchId} from CricAPI:`, e.message);
+  }
   return null;
 }
 

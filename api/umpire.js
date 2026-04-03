@@ -228,7 +228,7 @@ Format your exact JSON response as an array of objects corresponding to the ques
            creator_id: challenge.creator_id,
            match_id: challenge.match_id,
            match_name: challenge.match_name,
-           content: postData
+           content: JSON.stringify(postData)
          });
       }
 
@@ -262,7 +262,7 @@ Format your exact JSON response as an array of objects corresponding to the ques
             creator_id: challenge.creator_id,
             match_id: challenge.match_id,
             match_name: challenge.match_name,
-            content: leaderboardData
+            content: JSON.stringify(leaderboardData)
          });
       }
 
