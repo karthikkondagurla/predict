@@ -43,9 +43,12 @@ export function DataProvider({ children }) {
     if (!force && !isStale(matchesFetchedAt)) return
     setMatchesLoading(true)
     try {
-      const data = await fetchCurrentMatches()
+      const { data, source } = await fetchCurrentMatches()
       setMatches(Array.isArray(data) ? data : [])
-      matchesFetchedAt.current = Date.now()
+      // Only mark as fetched if Redis had real data — otherwise retry next time
+      if (source === 'cache') {
+        matchesFetchedAt.current = Date.now()
+      }
     } catch (err) {
       console.error('Failed to load matches:', err)
     } finally {
