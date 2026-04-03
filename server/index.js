@@ -120,22 +120,30 @@ redis.on('error', (err) => {
 const BASE_URL = 'https://api.cricapi.com/v1';
 const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 
-// --- MATCH WINDOW CONFIG (IST = UTC+5:30) ---
-// Evening match: toss at 7:00 PM IST, ends ~11:30 PM IST
-const EVENING_WINDOW = { startHour: 19, startMin: 0, endHour: 23, endMin: 30 };
-
-function isInMatchWindow() {
-  const now = new Date();
-  // Convert to IST (UTC+5:30)
+// --- IST HELPERS ---
+function nowIST() {
   const istOffsetMs = 5.5 * 60 * 60 * 1000;
-  const ist = new Date(now.getTime() + istOffsetMs);
+  return new Date(Date.now() + istOffsetMs);
+}
+
+function todayISTString() {
+  return nowIST().toISOString().split('T')[0]; // "YYYY-MM-DD"
+}
+
+// --- MATCH WINDOW CONFIG (IST = UTC+5:30) ---
+// Afternoon match: toss ~3:00 PM IST, ends ~7:30 PM IST
+// Evening match:   toss ~7:00 PM IST, ends ~11:30 PM IST
+function isInMatchWindow() {
+  const ist = nowIST();
   const h = ist.getUTCHours();
   const m = ist.getUTCMinutes();
   const totalMin = h * 60 + m;
-  const windowStart = EVENING_WINDOW.startHour * 60 + EVENING_WINDOW.startMin;
-  const windowEnd   = EVENING_WINDOW.endHour   * 60 + EVENING_WINDOW.endMin;
-  return totalMin >= windowStart && totalMin <= windowEnd;
+  const afternoonStart = 14 * 60 + 30; // 2:30 PM IST (buffer before 3 PM toss)
+  const eveningEnd     = 23 * 60 + 30; // 11:30 PM IST
+  return totalMin >= afternoonStart && totalMin <= eveningEnd;
 }
+
+let seriesInfoFetchedDate = null;
 
 // Timestamps to enforce intervals within the window
 let lastScorecardsRefresh = 0;
@@ -143,18 +151,25 @@ let lastAIUmpire          = 0;
 const SCORECARD_INTERVAL_MS   = 5 * 60 * 1000;  // 5 minutes
 const AI_UMPIRE_INTERVAL_MS   = 2 * 60 * 1000;  // 2 minutes
 
-// --- 1a. FETCH SERIES INFO (once per day at window open) ---
+// --- 1a. FETCH SERIES INFO (once per day, also called on startup) ---
 async function fetchAndCacheSeriesInfo() {
   if (cricApiKeys.length === 0) return;
 
-  console.log('📡 Fetching series info from CricAPI (once today)...');
+  const todayStr = todayISTString();
+
+  // Skip if already fetched today
+  if (seriesInfoFetchedDate === todayStr) {
+    console.log('📡 Series info already fetched today, skipping.');
+    return;
+  }
+
+  console.log('📡 Fetching series info from CricAPI...');
   try {
     const data = await fetchWithCricApiRotation((key) => `${BASE_URL}/series_info?apikey=${key}&id=${IPL_SERIES_ID}`);
 
     if (data.status !== "success") throw new Error(data.reason || "Failed to fetch series info");
 
     const rawMatches = data.data?.matchList || [];
-    const todayStr = todayISTString();
 
     const todayMatches = rawMatches.filter(m => m.dateTimeGMT?.startsWith(todayStr));
 
@@ -163,7 +178,7 @@ async function fetchAndCacheSeriesInfo() {
       await redis.set('live_matches', JSON.stringify(todayMatches), 'EX', 86400);
       console.log(`💾 Cached ${todayMatches.length} today's match(es) from series_info`);
     } else {
-      console.log('⚠️ No matches scheduled for today.');
+      console.log('⚠️ No matches scheduled for today per series_info.');
     }
 
     seriesInfoFetchedDate = todayStr;
@@ -213,17 +228,26 @@ async function refreshScorecards() {
 
 // --- DAILY SERIES INFO FETCH (midnight IST = 18:30 UTC) ---
 cron.schedule('30 18 * * *', async () => {
-  // Reset API key rotation indices for the new day
+  // Reset API key rotation indices and date guard for the new day
   currentCricApiIndex = 0;
   currentGeminiIndex = 0;
+  seriesInfoFetchedDate = null;
   console.log('🔄 Reset API key rotation indices for the new day');
 
   await fetchAndCacheSeriesInfo();
 }, { timezone: 'UTC' });
 console.log('✅ Series info scheduled daily at midnight IST (18:30 UTC)');
 
+// --- STARTUP: fetch series info immediately so live_matches is current ---
+fetchAndCacheSeriesInfo().catch(err => console.error('❌ Startup series info fetch failed:', err));
+
 // --- MASTER SCHEDULER (runs every minute during match window) ---
 cron.schedule('* * * * *', async () => {
+  // Refresh series info if not done today (e.g. server restarted after midnight)
+  if (seriesInfoFetchedDate !== todayISTString()) {
+    await fetchAndCacheSeriesInfo();
+  }
+
   if (!isInMatchWindow()) return;
 
   const now = Date.now();
@@ -241,7 +265,7 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
-console.log('✅ Match window scheduler is ENABLED (evening: 7:00 PM – 11:30 PM IST)');
+console.log('✅ Match window scheduler is ENABLED (2:30 PM – 11:30 PM IST, covers both afternoon and evening matches)');
 
 // --- 2. API ROUTE: GET LIVE MATCHES ---
 app.get('/api/matches', async (req, res) => {
@@ -263,15 +287,32 @@ app.get('/api/matches', async (req, res) => {
   }
 });
 
-// --- 3. HELPER: FETCH SCORECARD ---
+// --- 3. HELPER: FETCH SCORECARD (Redis first, then CricAPI fallback) ---
 async function getMatchScorecard(matchId) {
-  // 1. Check Redis only
+  // 1. Check Redis first
   const cachedScorecard = await redis.get(`scorecard:${matchId}`);
   if (cachedScorecard) {
     return JSON.parse(cachedScorecard);
   }
 
-  console.log(`⚠️ No scorecard found in Redis for ${matchId}. Waiting for cron job to populate cache.`);
+  // 2. Fallback: fetch directly from CricAPI and cache it
+  if (cricApiKeys.length === 0) {
+    console.log(`⚠️ No scorecard in Redis for ${matchId} and no CricAPI keys configured.`);
+    return null;
+  }
+
+  console.log(`📡 Scorecard not in Redis for ${matchId}, fetching from CricAPI...`);
+  try {
+    const scoreData = await fetchWithCricApiRotation((key) => `${BASE_URL}/match_scorecard?apikey=${key}&id=${matchId}`);
+    if (scoreData.status === 'success' && scoreData.data) {
+      await redis.set(`scorecard:${matchId}`, JSON.stringify(scoreData.data), 'EX', 600);
+      console.log(`💾 Fetched and cached scorecard for ${matchId}`);
+      return scoreData.data;
+    }
+    console.log(`⚠️ CricAPI returned no scorecard for ${matchId}: ${scoreData.reason || 'unknown'}`);
+  } catch (e) {
+    console.error(`❌ Failed to fetch scorecard for ${matchId} from CricAPI:`, e.message);
+  }
   return null;
 }
 
