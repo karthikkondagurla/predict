@@ -35,8 +35,8 @@ export default function Home() {
     if (!user?.id) return
     setFeedLoading(true)
     try {
-      // 1. Get friend IDs (+ own ID)
-      const ids = await getFriendIds()
+      // 1. Get friend IDs (+ own ID) — pass user.id to skip a redundant auth round-trip
+      const ids = await getFriendIds(user.id)
       const allowedIds = [...ids, user.id]
       setFriendIds(ids)
 

@@ -1,22 +1,23 @@
 import { supabase } from '../supabase'
 
 /**
- * Get current user's friend IDs (accepted friendships)
+ * Get current user's friend IDs (accepted friendships).
+ * Pass userId to avoid an extra Supabase auth round-trip when the caller already has it.
  */
-export async function getFriendIds() {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return []
+export async function getFriendIds(userId) {
+  const uid = userId ?? (await supabase.auth.getUser()).data?.user?.id
+  if (!uid) return []
 
   const { data, error } = await supabase
     .from('friendships')
     .select('requester_id, receiver_id')
     .eq('status', 'accepted')
-    .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`)
+    .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`)
 
   if (error) throw error
 
   return (data || []).map(f =>
-    f.requester_id === user.id ? f.receiver_id : f.requester_id
+    f.requester_id === uid ? f.receiver_id : f.requester_id
   )
 }
 
