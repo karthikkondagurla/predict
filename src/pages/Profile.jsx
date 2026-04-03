@@ -91,9 +91,9 @@ export default function Profile() {
   })
 
   return (
-    <div className="page" style={{ minHeight: 'calc(100vh - 64px - 72px)' }}>
+    <div className="page" style={{ minHeight: 'calc(100vh - 64px - 72px)', paddingTop: 0 }}>
       {/* Header */}
-      <div style={{ padding: '2.5rem 1rem 1.5rem', background: 'var(--bg-glass)', borderBottom: '1px solid var(--border-glass)' }}>
+      <div style={{ padding: '1.5rem 1rem 1.5rem', background: 'var(--bg-glass)', borderBottom: '1px solid var(--border-glass)' }}>
         <div className="container" style={{ maxWidth: '800px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div style={{ position: 'relative', marginBottom: '1rem' }}>
             <Avatar user={{ ...(user?.user_metadata || {}), email: user?.email }} size={96} />
