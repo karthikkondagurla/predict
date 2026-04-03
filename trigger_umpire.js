@@ -6,12 +6,28 @@ import Redis from 'ioredis';
 dotenv.config();
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const geminiKeys = process.env.GEMINI_KEYS
+  ? process.env.GEMINI_KEYS.split(',').map(k => k.trim()).filter(Boolean)
+  : [process.env.GEMINI_API_KEY].filter(Boolean);
+
+const genAI = new GoogleGenerativeAI(geminiKeys[0] || '');
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+
+const cricApiKeys = process.env.CRICAPI_KEYS ? process.env.CRICAPI_KEYS.split(',') : [];
 
 async function getMatchScorecard(matchId) {
   const cachedScorecard = await redis.get(`scorecard:${matchId}`);
   if (cachedScorecard) return JSON.parse(cachedScorecard);
+
+  if (cricApiKeys.length > 0) {
+    console.log(`📡 Fetching from CricAPI for match ${matchId}... key: ${cricApiKeys[0]}`);
+    const res = await fetch(`https://api.cricapi.com/v1/match_scorecard?apikey=${cricApiKeys[0]}&id=${matchId}`);
+    const data = await res.json();
+    if (data.status === 'success' && data.data) {
+        await redis.set(`scorecard:${matchId}`, JSON.stringify(data.data), 'EX', 600);
+        return data.data;
+    }
+  }
   return null;
 }
 
