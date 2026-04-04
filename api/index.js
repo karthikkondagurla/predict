@@ -134,10 +134,8 @@ async function hasActiveMatch() {
 
   const now = Date.now();
   return matches.some(m => {
-    // If match has explicitly ended, it's no longer active
-    if (m.matchEnded) return false;
-
-    // If API says it started, it's definitely active
+    // If API says it started, it's definitely active (even if matchEnded, we still
+    // want the umpire to run until all challenges are resolved)
     if (m.matchStarted) return true;
 
     // If not explicitly marked started yet, check if we are past the start time
@@ -358,10 +356,10 @@ async function runAIUmpire() {
 
       // 3. Strict Prompting to Gemini 2.5 Flash
 
-      // Filter only questions that haven't been resolved yet (answer === -1)
+      // Filter only questions that haven't been resolved yet
       console.log(`📝 Challenge has ${challenge.questions?.length || 0} total questions`);
       const questionsToGrade = challenge.questions.map((q, i) => ({ ...q, originalIndex: i }))
-                                                  .filter(q => q.answer === -1);
+                                                  .filter(q => q.status !== 'RESOLVED');
       console.log(`📝 ${questionsToGrade.length} question(s) pending evaluation`);
 
       if (questionsToGrade.length === 0) {
@@ -413,7 +411,9 @@ Format your exact JSON response as an array of objects corresponding to the ques
       geminiResults.forEach((res, indexInList) => {
          const origIndex = questionsToGrade[indexInList].originalIndex;
          if (res.status === "RESOLVED") {
-            challenge.questions[origIndex].answer = res.answer_index;
+            // DO NOT overwrite q.answer (creator's prediction) — store official result separately
+            challenge.questions[origIndex].official_answer = res.answer_index;
+            challenge.questions[origIndex].status = 'RESOLVED';
             hasNewResolvedQuestions = true;
             newlyResolvedQuestionIndexes.push({ origIndex, res });
          }
@@ -450,19 +450,19 @@ Format your exact JSON response as an array of objects corresponding to the ques
       // This is the true incremental feed feature.
       for (const { origIndex, res: aiRes } of newlyResolvedQuestionIndexes) {
          const q = challenge.questions[origIndex];
-         const officialAnsText = aiRes.result_text || (q.answer !== null ? q.options[q.answer] : "None of the options");
-         
+         const officialAnsText = aiRes.result_text || (q.official_answer !== null ? q.options[q.official_answer] : "None of the options");
+
          const participants = responses ? responses.map(resp => {
            const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
            const img = resp.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
-           const isCorrect = q.answer !== null && resp.answers[origIndex] === q.answer;
+           const isCorrect = q.official_answer !== null && resp.answers[origIndex] === q.official_answer;
            return {
               id: resp.user_id,
               n: name,
               img: img,
-              pts: isCorrect ? "+20" : "0", 
+              pts: isCorrect ? "+20" : "0",
               ok: isCorrect,
-              ans: q.options[resp.answers[origIndex]] || "Skipped/Pending" 
+              ans: q.options[resp.answers[origIndex]] || "Skipped/Pending"
            };
          }) : [];
 
@@ -492,14 +492,15 @@ Format your exact JSON response as an array of objects corresponding to the ques
       }
 
       // Check if ALL questions across the challenge are now fully resolved
-      const isCompletelyResolved = challenge.questions.every(q => q.answer !== -1);
+      const isCompletelyResolved = challenge.questions.every(q => q.status === 'RESOLVED');
 
       if (isCompletelyResolved) {
          // Calculate final scores across all questions
          for (const resp of responses) {
             let score = 0;
             resp.answers.forEach((ans, i) => {
-              if (ans !== -1 && ans === challenge.questions[i].answer) score += 20;
+              const q = challenge.questions[i];
+              if (q.status === 'RESOLVED' && q.official_answer !== null && ans === q.official_answer) score += 20;
             });
             await supabase.from('challenge_responses').update({ score }).eq('id', resp.id);
             resp.score = score; // sync for leaderboard
