@@ -122,7 +122,10 @@ const IPL_SERIES_ID = "87c62aac-bc3c-4738-ab93-19da0690488f";
 // --- MATCH LOGIC (Dynamic Polling) ---
 function todayISTString() {
   const now = new Date();
-  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  // Add 5.5 hours for IST.
+  // Add a 15-minute buffer (15 * 60 * 1000) so that if the 18:30 UTC cron
+  // fires slightly early (e.g. 18:29), it still resolves to the new day.
+  const istOffsetMs = (5.5 * 60 * 60 * 1000) + (15 * 60 * 1000);
   const ist = new Date(now.getTime() + istOffsetMs);
   return ist.toISOString().split('T')[0]; // Format: YYYY-MM-DD
 }
@@ -178,6 +181,7 @@ async function fetchAndCacheSeriesInfo() {
       console.log(`💾 Cached ${todayMatches.length} today's match(es) from series_info`);
     } else {
       console.log('⚠️ No matches scheduled for today.');
+      await redis.del('live_matches');
     }
   } catch (error) {
     console.error('❌ Error fetching series info:', error);
@@ -195,7 +199,14 @@ async function refreshScorecards() {
   }
 
   const matches = JSON.parse(cached);
+  let hasChanges = false;
+
   for (const match of matches) {
+    if (match.matchEnded) {
+      console.log(`⏭️ Skipping scorecard refresh for ${match.id} (Match Ended)`);
+      continue;
+    }
+
     try {
       const scoreData = await fetchWithCricApiRotation((key) => `${BASE_URL}/match_scorecard?apikey=${key}&id=${match.id}`);
 
@@ -210,7 +221,12 @@ async function refreshScorecards() {
           matchEnded:   scoreData.data.matchEnded   ?? match.matchEnded,
           status:       scoreData.data.status       ?? match.status,
         };
-        matches[matches.indexOf(match)] = updatedMatch;
+
+        // Only update if there's a difference
+        if (JSON.stringify(matches[matches.indexOf(match)]) !== JSON.stringify(updatedMatch)) {
+           matches[matches.indexOf(match)] = updatedMatch;
+           hasChanges = true;
+        }
 
         console.log(`💾 Refreshed scorecard for ${match.id}`);
       }
@@ -220,7 +236,9 @@ async function refreshScorecards() {
   }
 
   // Write updated match list back so /api/matches serves fresh card data
-  await redis.set('live_matches', JSON.stringify(matches), 'EX', 86400);
+  if (hasChanges) {
+    await redis.set('live_matches', JSON.stringify(matches), 'KEEPTTL');
+  }
 }
 
 // --- CRON JOB ROUTES (Triggered by Vercel Cron) ---
