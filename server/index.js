@@ -50,7 +50,7 @@ async function fetchWithCricApiRotation(endpointBuilder) {
       const data = await res.json();
 
       // Check if limit exceeded or unauthorized
-      if (data.status !== "success" && data.reason && /limit|upgrade|quota|apikey|hits/i.test(data.reason)) {
+      if (data.status !== "success" && data.reason && /limit|upgrade|quota|apikey|hits|blocked/i.test(data.reason)) {
         console.warn(`⚠️ CricAPI key ${currentCricApiIndex + 1}/${cricApiKeys.length} exhausted or invalid. Reason: ${data.reason}. Switching to next key...`);
         currentCricApiIndex = (currentCricApiIndex + 1) % cricApiKeys.length;
         attempts++;
@@ -380,7 +380,7 @@ PENDING QUESTIONS TO GRADE:
 ${questionsToGrade.map(q => `Q_IDX_${q.originalIndex}: ${q.question} (Options: ${q.options.map((o, j) => `${j}:${o}`).join(', ')})`).join('\n')}
 
 STRICT RULES (NO HALLUCINATION):
-1. The match is currently LIVE (matchEnded: false). 
+1. The match might be LIVE (matchEnded: false) or already over (matchEnded: true). Look closely at the scorecard.
 2. BE EXTREMELY STRICT ABOUT EVENTS NOT CONCLUDING YET. Never assume or project future outcomes.
 3. If checking a player's final score (e.g. ">50"), check the "dismissal-text" or "out" status. If they are "not out", the event has not concluded. Even if they currently have 51 runs ("not out"), return "UNRESOLVED" because their final score might be >80 later. You can only grade a batsman's score if they are definitively "out" (dismissed), or if the innings is completely over.
 4. If a question is about who wins the match/Man of the Match, and matchEnded is false, return "UNRESOLVED".

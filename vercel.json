@@ -1,4 +1,18 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/scorecards",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/umpire",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/series",
+      "schedule": "30 18 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
