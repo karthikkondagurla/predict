@@ -100,7 +100,18 @@ export function DataProvider({ children }) {
       const uniquePostsMap = {}
       ;(posts || []).forEach(p => uniquePostsMap[p.id] = { type: 'post', data: p, date: new Date(p.created_at) })
 
-      const combined = [...formattedChallenges, ...Object.values(uniquePostsMap)].sort((a, b) => b.date - a.date)
+      const combined = [...formattedChallenges, ...Object.values(uniquePostsMap)].sort((a, b) => {
+        const diff = b.date - a.date
+        if (diff !== 0) return diff
+        // If timestamps are identical, put q_results ABOVE leaderboards
+        const aStr = typeof a.data?.content === 'string' ? a.data.content : JSON.stringify(a.data?.content || {})
+        const bStr = typeof b.data?.content === 'string' ? b.data.content : JSON.stringify(b.data?.content || {})
+        const aIsLb = aStr.includes('"type":"leaderboard"')
+        const bIsLb = bStr.includes('"type":"leaderboard"')
+        if (!aIsLb && bIsLb) return -1
+        if (aIsLb && !bIsLb) return 1
+        return 0
+      })
       setFeedItems(combined)
       feedFetchedAt.current = Date.now()
     } catch (err) {
@@ -243,7 +254,18 @@ export function DataProvider({ children }) {
         formattedPosts = Object.values(uniquePostsMap).map(p => ({ type: 'post', data: p, date: new Date(p.created_at) }))
       }
 
-      const combined = [...formattedChallenges, ...formattedParticipated, ...formattedPosts].sort((a, b) => b.date - a.date)
+      const combined = [...formattedChallenges, ...formattedParticipated, ...formattedPosts].sort((a, b) => {
+        const diff = b.date - a.date
+        if (diff !== 0) return diff
+        // If timestamps are identical, put q_results ABOVE leaderboards
+        const aStr = typeof a.data?.content === 'string' ? a.data.content : JSON.stringify(a.data?.content || {})
+        const bStr = typeof b.data?.content === 'string' ? b.data.content : JSON.stringify(b.data?.content || {})
+        const aIsLb = aStr.includes('"type":"leaderboard"')
+        const bIsLb = bStr.includes('"type":"leaderboard"')
+        if (!aIsLb && bIsLb) return -1
+        if (aIsLb && !bIsLb) return 1
+        return 0
+      })
       setActivity(combined)
       profileFetchedAt.current = Date.now()
     } catch (err) {
