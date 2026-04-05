@@ -2,3 +2,7 @@ node_modules
 dist
 .env
 .vercel
+.dev.vars
+.wrangler/
+push-secrets.sh
+parse_secrets.js

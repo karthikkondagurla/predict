@@ -1,6 +1,6 @@
 // API utility for fetching cricket match data from cricketdata.org (cricapi.com)
 
-const BACKEND_URL = '/api';
+const BACKEND_URL = import.meta.env.VITE_API_URL || '/api';
 
 /**
  * Fetch today's IPL matches from the local backend (which checks Redis)
