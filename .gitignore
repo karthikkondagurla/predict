@@ -4,5 +4,6 @@ dist
 .vercel
 .dev.vars
 .wrangler/
-push-secrets.sh
+.push-secrets.sh
 parse_secrets.js
+test-upstash.js
