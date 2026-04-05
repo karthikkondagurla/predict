@@ -240,8 +240,20 @@ async function runMatchUmpire(match, redis, rotator, supabase) {
   // Fetch Live Scorecard (from Redis)
   let scoreData = await redis.get(`scorecard:${match.id}`);
   if (!scoreData) {
-     console.log(`⚠️ No live scorecard available in Redis for match ${match.id}, skipping AI Umpire.`);
-     return;
+     console.log(`⚠️ No live scorecard in Redis for ${match.id}, fetching from CricAPI...`);
+     try {
+       const scoreRes = await rotator.fetchCricApi((key) => `${BASE_URL}/match_scorecard?apikey=${key}&id=${match.id}`);
+       if (scoreRes.status === "success" && scoreRes.data) {
+         scoreData = scoreRes.data;
+         await redis.set(`scorecard:${match.id}`, scoreData, { ex: 600 });
+       } else {
+         console.log(`⚠️ Could not fetch scorecard for ${match.id}, skipping AI Umpire.`);
+         return;
+       }
+     } catch (e) {
+       console.log(`❌ Failed to fetch scorecard for ${match.id}:`, e.message);
+       return;
+     }
   }
 
   let allChallengesResolvedNow = true;
@@ -348,7 +360,8 @@ Format your exact JSON response as an array of objects corresponding to the ques
               q: q.question,
               off: officialAnsText,
               total_q: challenge.questions.length,
-              parts: participants
+              parts: participants,
+              short_id: challenge.short_id
            })
          });
       }
