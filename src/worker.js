@@ -82,7 +82,7 @@ class ApiRotator {
 // --- API ROUTES ---
 
 // 1. Get Live Matches (Frontend Endpoint)
-app.get('/api/matches', async (c) => {
+const matchesHandler = async (c) => {
   const redis = new Redis({
     url: c.env.UPSTASH_REDIS_REST_URL,
     token: c.env.UPSTASH_REDIS_REST_TOKEN,
@@ -90,7 +90,7 @@ app.get('/api/matches', async (c) => {
 
   try {
     const cachedMatches = await redis.get('live_matches');
-    
+
     // Cloudflare Edge Cache headers
     c.header('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
 
@@ -101,7 +101,10 @@ app.get('/api/matches', async (c) => {
   } catch (error) {
     return c.json({ status: 'error', reason: error.message }, 500);
   }
-});
+};
+
+app.get('/api/matches', matchesHandler);
+app.get('/matches', matchesHandler);
 
 // --- CRON JOB LOGIC ---
 
