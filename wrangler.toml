@@ -3,5 +3,5 @@ main = "src/worker.js"
 compatibility_date = "2024-04-06"
 
 [triggers]
-# "30 18 * * *" UTC is exactly "00:00" (Midnight) IST
-crons = ["30 18 * * *", "*/2 * * * *"]
+# "32 18 * * *" UTC is exactly "00:02" (Midnight + 2 mins) IST
+crons = ["32 18 * * *", "*/2 * * * *"]
