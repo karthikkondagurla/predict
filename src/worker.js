@@ -443,9 +443,9 @@ export default {
 
   // Handle Cron Triggers
   async scheduled(event, env, ctx) {
-    // We use ctx.waitUntil so Cloudflare doesn't kill the worker 
+    // We use ctx.waitUntil so Cloudflare doesn't kill the worker
     // immediately if the promise takes slightly longer than the CPU time
-    if (event.cron === "0 0 * * *") {
+    if (event.cron === "30 18 * * *") {
       ctx.waitUntil(runDailySetup(env));
     } else if (event.cron === "*/2 * * * *") {
       ctx.waitUntil(runSmartMatchTrackerAndUmpire(env));
