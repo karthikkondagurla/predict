@@ -235,6 +235,7 @@ async function refreshScorecards() {
           matchStarted: scoreData.data.matchStarted ?? match.matchStarted,
           matchEnded:   scoreData.data.matchEnded   ?? match.matchEnded,
           status:       scoreData.data.status       ?? match.status,
+          score:        scoreData.data.score        ?? match.score,
         };
         matches[matches.indexOf(match)] = updatedMatch;
 
@@ -515,20 +516,20 @@ Format your exact JSON response as an array of objects corresponding to the ques
          }
       }
 
+      // ALWAYS calculate current scores across all resolved questions so far
+      for (const resp of responses) {
+         let score = 0;
+         resp.answers.forEach((ans, i) => {
+           if (ans !== -1 && ans === challenge.questions[i].answer) score += 20;
+         });
+         await supabase.from('challenge_responses').update({ score }).eq('id', resp.id);
+         resp.score = score; // sync for leaderboard
+      }
+
       // Check if ALL questions across the challenge are now fully resolved
       const isCompletelyResolved = challenge.questions.every(q => q.answer !== -1);
 
       if (isCompletelyResolved) {
-         // Calculate final scores across all questions
-         for (const resp of responses) {
-            let score = 0;
-            resp.answers.forEach((ans, i) => {
-              if (ans !== -1 && ans === challenge.questions[i].answer) score += 20;
-            });
-            await supabase.from('challenge_responses').update({ score }).eq('id', resp.id);
-            resp.score = score; // sync for leaderboard
-         }
-
          // Generate Final Leaderboard Post
          const leaderboardParticipants = responses.map(resp => {
             const name = resp.profiles?.full_name || resp.profiles?.email?.split('@')[0] || 'Unknown User';
