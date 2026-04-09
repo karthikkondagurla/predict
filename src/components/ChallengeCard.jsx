@@ -240,12 +240,18 @@ export default function ChallengeCard({ challenge }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {q.options.map((opt, oi) => {
             const isSelected = answers[currentStep] === oi
+            const answeredCount = responses.filter(r => r.answers && r.answers[currentStep] !== -1).length
+            const optionCount = responses.filter(r => r.answers && r.answers[currentStep] === oi).length
+            const percentage = isLocked && answeredCount > 0 ? Math.round((optionCount / answeredCount) * 100) : 0
+            const percentageStr = `${percentage}%`
+
             return (
               <button
                 key={oi}
                 onClick={() => handleSelectAnswer(oi)}
                 disabled={isLocked}
                 style={{
+                  position: 'relative', overflow: 'hidden',
                   display: 'flex', alignItems: 'center', gap: '0.75rem',
                   padding: '0.75rem',
                   background: isSelected ? 'rgba(255, 107, 53, 0.1)' : 'var(--bg-glass)',
@@ -254,18 +260,36 @@ export default function ChallengeCard({ challenge }) {
                   cursor: isLocked ? 'default' : 'pointer',
                   color: 'var(--text-primary)', textAlign: 'left',
                   transition: 'all 0.2s ease',
-                  opacity: isLocked && !isSelected ? 0.5 : 1,
+                  opacity: isLocked && !isSelected ? 0.7 : 1,
                 }}
               >
+                {/* Progress bar background for locked state */}
+                {isLocked && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, bottom: 0,
+                    width: percentageStr,
+                    background: isSelected ? 'rgba(255, 107, 53, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                    zIndex: 0, transition: 'width 0.5s ease-out'
+                  }} />
+                )}
+
                 <div style={{
                   width: 20, height: 20, borderRadius: '50%',
                   border: `1.5px solid ${isSelected ? 'var(--gold)' : 'var(--text-muted)'}`,
                   background: isSelected ? 'var(--gold)' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 1
                 }}>
                   {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#000' }} />}
                 </div>
-                <span style={{ fontSize: '0.9rem' }}>{opt}</span>
+                
+                <span style={{ fontSize: '0.9rem', zIndex: 1, flex: 1 }}>{opt}</span>
+                
+                {isLocked && (
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isSelected ? 'var(--gold)' : 'var(--text-muted)', zIndex: 1 }}>
+                    {percentageStr}
+                  </span>
+                )}
               </button>
             )
           })}
