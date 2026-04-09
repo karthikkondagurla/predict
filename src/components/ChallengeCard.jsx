@@ -28,7 +28,9 @@ export default function ChallengeCard({ challenge }) {
   const [creatorProfile, setCreatorProfile] = useState(null)
 
   const isCreator = user && user.id === challenge.creator_id
-  const isLocked = submitted || isCreator
+  const hasResults = questions.some(q => q.answer !== -1)
+  const isClosed = hasResults || challenge.is_resolved
+  const isLocked = submitted || isCreator || isClosed
 
   // Load existing responses & check if user already participated
   useEffect(() => {
@@ -269,6 +271,13 @@ export default function ChallengeCard({ challenge }) {
           })}
         </div>
       </div>
+
+      {/* Closed status badge */}
+      {isClosed && !submitted && !isCreator && (
+        <div style={{ marginTop: '1.25rem', padding: '0.8rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: 'var(--radius-sm)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          🚫 Challenge is closed (results are pouring in!)
+        </div>
+      )}
 
       {/* Lock Prediction Button — only for non-locked users who answered all */}
       {!isLocked && allAnswered && currentStep === questionCount - 1 && (
