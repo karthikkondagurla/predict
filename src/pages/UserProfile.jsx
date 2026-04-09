@@ -107,9 +107,9 @@ export default function UserProfile() {
         const challenge = response.challenges;
         if (challenge && challenge.questions && response.answers) {
           challenge.questions.forEach((q, idx) => {
-            if (q.answer !== -1 && q.answer !== null && q.answer !== undefined) {
+            if (q.answer !== -1 && q.answer !== undefined) {
               totalGradedPredictions += 1;
-              if (response.answers[idx] === q.answer) {
+              if (String(response.answers[idx]) === String(q.answer)) {
                 correctPredictions += 1;
               }
             }

@@ -227,9 +227,9 @@ export function DataProvider({ children }) {
         const challenge = response.challenges
         if (challenge?.questions && response.answers) {
           challenge.questions.forEach((q, idx) => {
-            if (q.answer !== -1 && q.answer !== null && q.answer !== undefined) {
+            if (q.answer !== -1 && q.answer !== undefined) {
               totalGraded++
-              if (response.answers[idx] === q.answer) correct++
+              if (String(response.answers[idx]) === String(q.answer)) correct++
             }
           })
         }
