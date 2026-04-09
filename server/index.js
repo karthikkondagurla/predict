@@ -148,19 +148,41 @@ let seriesInfoFetchedDate = null;
 // Timestamps to enforce intervals within the window
 let lastScorecardsRefresh = 0;
 let lastAIUmpire          = 0;
-const SCORECARD_INTERVAL_MS   = 5 * 60 * 1000;  // 5 minutes
-const AI_UMPIRE_INTERVAL_MS   = 2 * 60 * 1000;  // 2 minutes
+const SCORECARD_INTERVAL_MS   = 1 * 60 * 1000;  // 1 minute
+const AI_UMPIRE_INTERVAL_MS   = 1 * 60 * 1000;  // 1 minute
 
 // --- 1a. FETCH SERIES INFO (once per day, also called on startup) ---
-async function fetchAndCacheSeriesInfo() {
+async function fetchAndCacheSeriesInfo(forceFetch = false) {
   if (cricApiKeys.length === 0) return;
 
   const todayStr = todayISTString();
 
-  // Skip if already fetched today
-  if (seriesInfoFetchedDate === todayStr) {
-    console.log('📡 Series info already fetched today, skipping.');
-    return;
+  if (!forceFetch) {
+    // Skip if already fetched today in this process
+    if (seriesInfoFetchedDate === todayStr) {
+      console.log('📡 Series info already fetched today in this process, skipping.');
+      return;
+    }
+
+    // Check if we already have today's matches in Redis to avoid hitting CricAPI on server reload
+    const cachedMatches = await redis.get('live_matches');
+    if (cachedMatches) {
+      try {
+        const matchesArray = JSON.parse(cachedMatches);
+        if (matchesArray.length > 0 && matchesArray[0].dateTimeGMT?.startsWith(todayStr)) {
+          console.log("📦 Today's live_matches already in Redis. Skipping CricAPI series info fetch.");
+          seriesInfoFetchedDate = todayStr;
+          return;
+        }
+      } catch (e) {
+        console.error('Error parsing cached matches', e);
+      }
+    }
+
+    if (!isInMatchWindow()) {
+      console.log("⚠️ Not in match window and Redis lacks today's matches. Skipping CricAPI series info fetch to save quota. Will fetch when match window starts.");
+      return;
+    }
   }
 
   console.log('📡 Fetching series info from CricAPI...');
@@ -179,6 +201,7 @@ async function fetchAndCacheSeriesInfo() {
       console.log(`💾 Cached ${todayMatches.length} today's match(es) from series_info`);
     } else {
       console.log('⚠️ No matches scheduled for today per series_info.');
+      await redis.del('live_matches');
     }
 
     seriesInfoFetchedDate = todayStr;
@@ -234,7 +257,7 @@ cron.schedule('30 18 * * *', async () => {
   seriesInfoFetchedDate = null;
   console.log('🔄 Reset API key rotation indices for the new day');
 
-  await fetchAndCacheSeriesInfo();
+  await fetchAndCacheSeriesInfo(true);
 }, { timezone: 'UTC' });
 console.log('✅ Series info scheduled daily at midnight IST (18:30 UTC)');
 
